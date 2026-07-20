@@ -25,6 +25,8 @@
     --booked-bg:      rgba(11, 11, 11, 0.06);
     --pend-ink:       #8a5c00;
     --pend-bg:        rgba(250, 178, 25, 0.18);
+    --openplay-ink:   #1c5cab;
+    --openplay-bg:    rgba(42, 120, 214, 0.14);
     --past-ink:       #898781;
     --past-bg:        transparent;
   }
@@ -46,6 +48,8 @@
       --booked-bg:      rgba(255, 255, 255, 0.07);
       --pend-ink:       #fab219;
       --pend-bg:        rgba(250, 178, 25, 0.14);
+      --openplay-ink:   #6da7ec;
+      --openplay-bg:    rgba(57, 135, 229, 0.16);
       --past-ink:       #898781;
       --past-bg:        transparent;
     }
@@ -95,6 +99,7 @@
   .dot.open   { background: var(--open); }
   .dot.sel    { background: var(--brand); }
   .dot.pend   { background: var(--pend-bg); border-color: var(--pend-ink); }
+  .dot.openplay { background: var(--openplay-bg); border-color: var(--openplay-ink); }
   .dot.booked { background: var(--booked-bg); }
   .dot.past   { background: repeating-linear-gradient(45deg, var(--hairline) 0 2px, transparent 2px 5px); }
 
@@ -198,6 +203,7 @@
   .range-label { margin-left: auto; font-size: 13px; color: var(--text-secondary); }
   td.c-booked { background: var(--booked-bg); color: var(--booked-ink); }
   td.c-pending { background: var(--pend-bg); color: var(--pend-ink); font-weight: 600; }
+  td.c-openplay { background: var(--openplay-bg); color: var(--openplay-ink); font-weight: 600; }
   td.c-past   { color: var(--past-ink); }
 
   /* ---------- states ---------- */
@@ -250,6 +256,7 @@
       <span><span class="dot open"></span> Open — tap to select</span>
       <span><span class="dot sel"></span> Selected</span>
       <span><span class="dot pend"></span> Pending confirmation</span>
+      <span><span class="dot openplay"></span> Open Play</span>
       <span><span class="dot booked"></span> Booked</span>
     </div>
   </header>
@@ -268,9 +275,9 @@
       Tap open slots to select them (you can pick several, across different days), then press “Book my slot”.
     </div>
     <div class="grid-nav">
-      <button id="navPrev" class="btn-ghost" aria-label="Previous 7 days">‹ Prev 7 days</button>
+      <button id="navPrev" class="btn-ghost" aria-label="Previous 3 days">‹ Prev 3 days</button>
       <input type="date" id="navDate" aria-label="Jump to date">
-      <button id="navNext" class="btn-ghost" aria-label="Next 7 days">Next 7 days ›</button>
+      <button id="navNext" class="btn-ghost" aria-label="Next 3 days">Next 3 days ›</button>
       <span class="range-label" id="rangeLabel"></span>
     </div>
     <div class="panel grid-scroll">
@@ -340,7 +347,8 @@
 // Your Google Apps Script web-app URL (Deploy > Web app > the /exec link).
 // The same link customers use for the booking form.
 var BOOKING_APP_URL = "https://script.google.com/macros/s/AKfycby3jksSe_z2141GVh-vkN0Tl_lm08kqqVCSI-GLZ1ANYFOK3QdUWXVAzfsCWlJliTmTdw/exec";
-var VISIBLE_DAYS = 7;       // columns shown at once
+var VISIBLE_DAYS = 4;       // columns shown at once
+var STEP_DAYS = 3;          // how many days Prev/Next moves the window
 var FETCH_DAYS = 30;        // how far ahead is loaded/navigable (max 30)
 var REFRESH_SECONDS = 60;   // auto-refresh interval
 var TIMEZONE = "Asia/Manila";
@@ -366,7 +374,9 @@ function slotStatus(dateStr, hourIdx) {
   var d = state.data;
   var slot = d.slots[hourIdx];
   var v = d.booked[dateStr] && d.booked[dateStr][slot];
-  if (v) return v === "pending" ? "pending" : "booked";
+  if (v === "pending") return "pending";
+  if (v === "open play") return "openplay";
+  if (v) return "booked";
   var now = manilaNow();
   if (dateStr < now.date || (dateStr === now.date && hourIdx < now.hour)) return "past";
   return "open";
@@ -460,7 +470,8 @@ function renderGrid() {
           "' data-h='" + h + "' role='button' tabindex='0' aria-pressed='" + isSel +
           "' aria-label='Select " + slot + " on " + ds + "'>" + (isSel ? "✓ Selected" : "Open") + "</td>";
       } else {
-        var label = status === "booked" ? "Booked" : status === "pending" ? "Pending" : "";
+        var label = status === "booked" ? "Booked" : status === "pending" ? "Pending" :
+          status === "openplay" ? "Open Play" : "";
         html += "<td class='c-" + status + "'>" + label + "</td>";
       }
     });
@@ -534,8 +545,8 @@ function shiftWindow(delta) {
   state.startIdx = Math.max(0, Math.min(state.startIdx + delta, len - VISIBLE_DAYS));
   renderAll();
 }
-$("navPrev").onclick = function () { shiftWindow(-VISIBLE_DAYS); };
-$("navNext").onclick = function () { shiftWindow(VISIBLE_DAYS); };
+$("navPrev").onclick = function () { shiftWindow(-STEP_DAYS); };
+$("navNext").onclick = function () { shiftWindow(STEP_DAYS); };
 $("navDate").onchange = function () {
   var i = state.data ? state.data.dates.indexOf(this.value) : -1;
   if (i >= 0) {
