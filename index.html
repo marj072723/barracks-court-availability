@@ -122,6 +122,14 @@
     padding: 10px 16px; border-top: 1px solid var(--hairline);
     font-size: 14px;
   }
+  ul.slots li.linked { padding: 0; }
+  ul.slots li.linked a {
+    flex: 1; display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; text-decoration: none; color: inherit;
+  }
+  ul.slots li.linked a:hover, ul.slots li.linked a:focus-visible { background: var(--open-bg); }
+  .chev { color: var(--text-muted); font-size: 16px; line-height: 1; }
+  .panel-hint { padding: 0 16px 10px; font-size: 12px; color: var(--text-muted); }
   ul.slots li.past { color: var(--past-ink); }
   .slot-time { flex: 1; font-variant-numeric: tabular-nums; }
   .slot-price { color: var(--text-secondary); font-size: 13px; min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -147,7 +155,11 @@
     text-align: left; font-weight: 600; color: var(--text-primary);
     box-shadow: 1px 0 0 var(--hairline);
   }
-  td.c-open   { background: var(--open-bg);   color: var(--open-ink);   font-weight: 700; }
+  td.c-open   { background: var(--open-bg);   color: var(--open-ink);   font-weight: 700; padding: 0; }
+  td.c-open a {
+    display: block; padding: 6px 8px; color: inherit; text-decoration: none;
+  }
+  td.c-open a:hover, td.c-open a:focus-visible { text-decoration: underline; }
   td.c-booked { background: var(--booked-bg); color: var(--booked-ink); }
   td.c-past   { color: var(--past-ink); }
 
@@ -184,7 +196,7 @@
       <span class="updated" id="updated"></span>
     </div>
     <div class="legend" role="note">
-      <span><span class="dot open"></span> Open — available to book</span>
+      <span><span class="dot open"></span> Open — tap to book</span>
       <span><span class="dot booked"></span> Booked</span>
     </div>
   </header>
@@ -202,6 +214,7 @@
     <div class="days" id="dayChips" role="tablist" aria-label="Pick a date"></div>
     <div class="panel">
       <div class="panel-title" id="dayTitle"></div>
+      <div class="panel-hint" id="dayHint"></div>
       <ul class="slots" id="slotList"></ul>
     </div>
   </div>
@@ -267,6 +280,10 @@ function fmtDay(dateStr, opts) {
 
 function shortSlot(slot) { return slot.split(" - ")[0]; }
 
+function bookingUrl(dateStr, slot) {
+  return BOOKING_APP_URL + "?date=" + dateStr + "&slot=" + encodeURIComponent(slot);
+}
+
 /* ---------- rendering ---------- */
 function renderDayChips() {
   var host = $("dayChips");
@@ -299,16 +316,24 @@ function renderSlotList() {
     if (status === "past") return; // ended slots are hidden entirely
     remaining++;
     var li = document.createElement("li");
-    var label = status === "open" ? "✓ Open" : "✕ Booked";
-    li.innerHTML =
+    var inner =
       '<span class="slot-time">' + slot + "</span>" +
-      '<span class="slot-price">' + d.currency + d.priceByHour[h] + "/hr</span>" +
-      '<span class="pill ' + status + '">' + label + "</span>";
+      '<span class="slot-price">' + d.currency + d.priceByHour[h] + "/hr</span>";
+    if (status === "open") {
+      li.className = "linked";
+      li.innerHTML =
+        '<a href="' + bookingUrl(state.selectedDate, slot) + '" target="_blank" rel="noopener"' +
+        ' aria-label="Book ' + slot + '">' + inner +
+        '<span class="pill open">✓ Open</span><span class="chev">›</span></a>';
+    } else {
+      li.innerHTML = inner + '<span class="pill booked">✕ Booked</span>';
+    }
     ul.appendChild(li);
   });
   $("dayTitle").innerHTML =
     fmtDay(state.selectedDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) +
     "<small>" + openCount(state.selectedDate) + " of " + remaining + " remaining slots open</small>";
+  $("dayHint").textContent = openCount(state.selectedDate) > 0 ? "Tap an open slot to book it." : "";
   if (remaining === 0) {
     ul.innerHTML = '<li><span class="slot-time" style="color:var(--past-ink)">All of today\'s slots have ended — check the next day.</span></li>';
   }
@@ -327,8 +352,11 @@ function renderGrid() {
     html += "<tr><td class='slot-col'>" + shortSlot(slot) + " · " + d.currency + d.priceByHour[h] + "</td>";
     d.dates.forEach(function (ds) {
       var status = slotStatus(ds, h);
-      var label = status === "open" ? "Open" : status === "booked" ? "Booked" : "";
-      html += "<td class='c-" + status + "'>" + label + "</td>";
+      var cell = status === "open"
+        ? "<a href='" + bookingUrl(ds, slot) + "' target='_blank' rel='noopener' aria-label='Book " +
+          slot + " on " + ds + "'>Open</a>"
+        : status === "booked" ? "Booked" : "";
+      html += "<td class='c-" + status + "'>" + cell + "</td>";
     });
     html += "</tr>";
   });
