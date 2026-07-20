@@ -92,40 +92,11 @@
   .dot.booked { background: var(--booked-bg); }
   .dot.past   { background: repeating-linear-gradient(45deg, var(--hairline) 0 2px, transparent 2px 5px); }
 
-  /* ---------- day chips ---------- */
-  .days {
-    display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 10px;
-    scrollbar-width: thin; -webkit-overflow-scrolling: touch;
-  }
-  .day-chip {
-    flex: 0 0 auto; min-width: 86px;
-    background: var(--surface-1); border: 1px solid var(--hairline);
-    border-radius: 10px; padding: 8px 10px; cursor: pointer;
-    font: inherit; text-align: center; color: var(--text-primary);
-  }
-  .day-chip .dow { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-  .day-chip .dnum { font-size: 17px; font-weight: 800; margin: 1px 0; }
-  .day-chip .free { font-size: 11px; color: var(--open-ink); font-weight: 600; }
-  .day-chip .free.none { color: var(--text-muted); font-weight: 400; }
-  .day-chip[aria-pressed="true"] { border: 2px solid var(--brand); padding: 7px 9px; }
-
-  /* ---------- day view (slot list) ---------- */
   .panel {
     background: var(--surface-1); border: 1px solid var(--hairline);
     border-radius: 12px; overflow: hidden;
   }
-  .panel-title { padding: 14px 16px 6px; font-size: 15px; font-weight: 700; }
-  .panel-title small { color: var(--text-muted); font-weight: 400; margin-left: 8px; }
-  ul.slots { list-style: none; }
-  ul.slots li {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 16px; border-top: 1px solid var(--hairline);
-    font-size: 14px;
-  }
-  ul.slots li.linked { cursor: pointer; user-select: none; }
-  ul.slots li.linked:hover, ul.slots li.linked:focus-visible { background: var(--open-bg); outline: none; }
-  ul.slots li.selected { background: var(--open-bg); box-shadow: inset 3px 0 0 var(--brand); }
-  .panel-hint { padding: 0 16px 10px; font-size: 12px; color: var(--text-muted); }
+  .panel-hint { font-size: 12px; color: var(--text-muted); }
 
   /* ---------- sticky booking bar ---------- */
   .bottombar {
@@ -140,18 +111,7 @@
   .bb-summary strong { color: var(--text-primary); }
   body.has-selection .wrap { padding-bottom: 110px; }
   ul.slots li.past { color: var(--past-ink); }
-  .slot-time { flex: 1; font-variant-numeric: tabular-nums; }
-  .slot-price { color: var(--text-secondary); font-size: 13px; min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
-  li.past .slot-price { color: var(--past-ink); }
-  .pill {
-    min-width: 84px; text-align: center;
-    font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
-  }
-  .pill.open   { background: var(--open-bg);   color: var(--open-ink); }
-  .pill.booked { background: var(--booked-bg); color: var(--booked-ink); }
-  .pill.past   { background: var(--past-bg);   color: var(--past-ink); font-weight: 500; }
-
-  /* ---------- full grid view ---------- */
+  /* ---------- availability grid ---------- */
   .grid-scroll { overflow-x: auto; }
   table.grid { border-collapse: collapse; font-size: 12px; min-width: 100%; }
   table.grid th, table.grid td {
@@ -186,7 +146,6 @@
 
   @media (min-width: 700px) {
     h1 { font-size: 32px; }
-    .day-chip { min-width: 96px; }
   }
 </style>
 </head>
@@ -198,7 +157,6 @@
     <div class="sub">Open 24 hours · ₱300/hr (6 AM–2 PM starts) · ₱400/hr (2 PM–6 AM starts) · Max 10 players</div>
     <div class="toolbar">
       <a id="bookBtn" class="btn-book" href="#" target="_blank" rel="noopener">Book a slot →</a>
-      <button id="viewToggle" class="btn-ghost" aria-pressed="false">Full 14-day grid</button>
       <button id="refreshBtn" class="btn-ghost">Refresh</button>
       <span class="updated" id="updated"></span>
     </div>
@@ -217,17 +175,13 @@
   <div id="loading" class="notice">Loading live availability…</div>
   <div id="errorNotice" class="notice hidden"></div>
 
-  <div id="dayView" class="hidden">
-    <div class="days" id="dayChips" role="tablist" aria-label="Pick a date"></div>
-    <div class="panel">
-      <div class="panel-title" id="dayTitle"></div>
-      <div class="panel-hint" id="dayHint"></div>
-      <ul class="slots" id="slotList"></ul>
+  <div id="gridView" class="hidden">
+    <div class="panel-hint" style="padding: 0 2px 8px;">
+      Tap open slots to select them (you can pick several, across different days), then press “Book my slot”.
     </div>
-  </div>
-
-  <div id="gridView" class="panel grid-scroll hidden">
-    <table class="grid" id="gridTable" aria-label="Availability, time slots by day"></table>
+    <div class="panel grid-scroll">
+      <table class="grid" id="gridTable" aria-label="Availability, time slots by day"></table>
+    </div>
   </div>
 
   <footer>
@@ -257,7 +211,7 @@ var TIMEZONE = "Asia/Manila";
 
 /* ============================================================ */
 // selected: map "date||slot" -> hour index, for multi-slot booking
-var state = { data: null, selectedDate: null, view: "day", selected: {} };
+var state = { data: null, selected: {} };
 
 var $ = function (id) { return document.getElementById(id); };
 
@@ -278,14 +232,6 @@ function slotStatus(dateStr, hourIdx) {
   var now = manilaNow();
   if (dateStr < now.date || (dateStr === now.date && hourIdx < now.hour)) return "past";
   return "open";
-}
-
-function openCount(dateStr) {
-  var n = 0;
-  for (var h = 0; h < state.data.slots.length; h++) {
-    if (slotStatus(dateStr, h) === "open") n++;
-  }
-  return n;
 }
 
 function fmtDay(dateStr, opts) {
@@ -340,70 +286,6 @@ function renderBottomBar() {
 }
 
 /* ---------- rendering ---------- */
-function renderDayChips() {
-  var host = $("dayChips");
-  host.innerHTML = "";
-  var today = manilaNow().date;
-  state.data.dates.forEach(function (ds) {
-    var b = document.createElement("button");
-    b.className = "day-chip";
-    b.setAttribute("role", "tab");
-    b.setAttribute("aria-pressed", String(ds === state.selectedDate));
-    var free = openCount(ds);
-    var dowLabel = ds === today ? "Today" : fmtDay(ds, { weekday: "short" });
-    b.innerHTML =
-      '<div class="dow">' + dowLabel + "</div>" +
-      '<div class="dnum">' + fmtDay(ds, { month: "short", day: "numeric" }) + "</div>" +
-      '<div class="free' + (free === 0 ? " none" : "") + '">' +
-      (free === 0 ? "Fully booked" : free + " open") + "</div>";
-    b.onclick = function () { state.selectedDate = ds; renderAll(); };
-    host.appendChild(b);
-  });
-}
-
-function renderSlotList() {
-  var d = state.data;
-  var ul = $("slotList");
-  ul.innerHTML = "";
-  var remaining = 0;
-  d.slots.forEach(function (slot, h) {
-    var status = slotStatus(state.selectedDate, h);
-    if (status === "past") return; // ended slots are hidden entirely
-    remaining++;
-    var li = document.createElement("li");
-    var inner =
-      '<span class="slot-time">' + slot + "</span>" +
-      '<span class="slot-price">' + d.currency + d.priceByHour[h] + "/hr</span>";
-    if (status === "open") {
-      var isSel = selKey(state.selectedDate, slot) in state.selected;
-      li.className = "linked" + (isSel ? " selected" : "");
-      li.setAttribute("role", "button");
-      li.setAttribute("tabindex", "0");
-      li.setAttribute("aria-pressed", String(isSel));
-      li.setAttribute("aria-label", "Select " + slot);
-      li.innerHTML = inner + '<span class="pill open">' + (isSel ? "✓ Selected" : "Open") + "</span>";
-      (function (hh) {
-        li.onclick = function () { toggleSelect(state.selectedDate, hh); };
-        li.onkeydown = function (ev) {
-          if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggleSelect(state.selectedDate, hh); }
-        };
-      })(h);
-    } else {
-      li.innerHTML = inner + '<span class="pill booked">✕ Booked</span>';
-    }
-    ul.appendChild(li);
-  });
-  $("dayTitle").innerHTML =
-    fmtDay(state.selectedDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) +
-    "<small>" + openCount(state.selectedDate) + " of " + remaining + " remaining slots open</small>";
-  $("dayHint").textContent = openCount(state.selectedDate) > 0
-    ? "Tap open slots to select them (you can pick several, across different days), then press “Book my slot”."
-    : "";
-  if (remaining === 0) {
-    ul.innerHTML = '<li><span class="slot-time" style="color:var(--past-ink)">All of today\'s slots have ended — check the next day.</span></li>';
-  }
-}
-
 function renderGrid() {
   var d = state.data;
   var today = manilaNow().date;
@@ -435,16 +317,9 @@ function renderGrid() {
 function renderAll() {
   if (!state.data) return;
   $("venueName").textContent = state.data.venue;
-  renderDayChips();
-  renderSlotList();
   renderGrid();
   renderBottomBar();
-  $("dayView").classList.toggle("hidden", state.view !== "day");
-  $("gridView").classList.toggle("hidden", state.view !== "grid");
-  $("viewToggle").setAttribute("aria-pressed", String(state.view === "grid"));
-  $("viewToggle").textContent = state.view === "grid"
-    ? "Day-by-day view"
-    : "Full " + state.data.dates.length + "-day grid";
+  $("gridView").classList.remove("hidden");
 }
 
 /* ---------- data ---------- */
@@ -463,9 +338,6 @@ function load() {
     })
     .then(function (data) {
       state.data = data;
-      if (!state.selectedDate || data.dates.indexOf(state.selectedDate) === -1) {
-        state.selectedDate = data.dates[0];
-      }
       pruneSelection();
       $("loading").classList.add("hidden");
       $("errorNotice").classList.add("hidden");
@@ -485,10 +357,6 @@ function load() {
 }
 
 $("refreshBtn").onclick = load;
-$("viewToggle").onclick = function () {
-  state.view = state.view === "day" ? "grid" : "day";
-  renderAll();
-};
 $("bbClear").onclick = function () {
   state.selected = {};
   renderAll();
