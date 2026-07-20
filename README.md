@@ -14,13 +14,16 @@ A public, auto-refreshing calendar showing which hourly slots are **Open** or
 ## How it fits together
 
 ```
-Customer books ──> Booking form (Apps Script /exec URL) ──> Google Sheet "Bookings"
-Customer checks ─> This dashboard (Vercel) ──fetches──> same /exec URL ?api=availability
+Customer checks ─> This dashboard (Vercel) ──GET──> Apps Script /exec ?api=availability
+Customer books ──> selects slots, "Book my slot" popup ──POST──> same /exec (doPost)
+                   └─> Apps Script re-checks availability, saves the GCash screenshot
+                       to Drive, appends Bookings rows, emails the receipt
 ```
 
-The `?api=availability` JSON endpoint was added to `Code.gs` in the
-`court-booking-form` project. It exposes **only** dates, time slots, and
-open/booked status — never customer names, emails, or phone numbers.
+Both endpoints live in `Code.gs` in the `court-booking-form` project. The
+availability API exposes **only** dates, time slots, and open/booked status —
+never customer names, emails, or phone numbers. The classic Apps Script form
+still works at the same URL as a fallback.
 
 ## Setup (~10 minutes)
 

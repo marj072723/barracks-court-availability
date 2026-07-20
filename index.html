@@ -111,6 +111,56 @@
   .bb-summary { flex: 1; font-size: 13px; color: var(--text-secondary); min-width: 0; }
   .bb-summary strong { color: var(--text-primary); }
   body.has-selection .wrap { padding-bottom: 110px; }
+
+  /* ---------- booking popup ---------- */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .modal {
+    background: var(--surface-1); border: 1px solid var(--hairline);
+    border-radius: 14px; width: 100%; max-width: 460px;
+    max-height: calc(100vh - 32px); overflow-y: auto;
+    padding: 20px;
+  }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .modal-head h2 { font-size: 18px; }
+  .modal-close {
+    background: none; border: none; color: var(--text-muted); font-size: 24px;
+    cursor: pointer; line-height: 1; padding: 4px 8px;
+  }
+  .bm-slots { font-size: 13px; color: var(--text-secondary); margin-bottom: 14px; }
+  .bm-slots div { padding: 3px 0; }
+  .bm-slots .bm-total { border-top: 1px solid var(--hairline); margin-top: 6px; padding-top: 8px; color: var(--text-primary); font-weight: 700; }
+  .modal label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+  .modal input[type="text"], .modal input[type="email"] {
+    width: 100%; background: var(--page); border: 1px solid var(--hairline);
+    color: var(--text-primary); border-radius: 8px; padding: 10px 12px;
+    font: inherit; font-size: 14px;
+  }
+  .modal input:focus { outline: none; border-color: var(--brand); }
+  .payblock {
+    margin: 16px 0 4px; padding: 12px 14px; border-radius: 10px;
+    background: rgba(168, 134, 60, 0.12); border: 1px solid var(--brand);
+    font-size: 13px; line-height: 1.6;
+  }
+  .payblock strong { font-size: 15px; }
+  .bm-file {
+    margin-top: 4px; width: 100%; border: 1px dashed var(--hairline); border-radius: 10px;
+    padding: 14px; font-size: 13px; color: var(--text-secondary);
+    background: var(--page); cursor: pointer;
+  }
+  .bm-error { color: #e34948; font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .bm-submit {
+    width: 100%; margin-top: 12px; background: var(--brand); color: #fff;
+    border: none; border-radius: 10px; padding: 13px; font: inherit;
+    font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  .bm-submit:disabled { opacity: 0.5; cursor: default; }
+  .bm-success { text-align: center; padding: 24px 8px; font-size: 14px; line-height: 1.7; }
+  .bm-success .big { font-size: 40px; }
   ul.slots li.past { color: var(--past-ink); }
   /* ---------- availability grid ---------- */
   .grid-scroll { overflow-x: auto; }
@@ -230,7 +280,42 @@
   <div class="bottombar-inner">
     <div class="bb-summary" id="bbSummary"></div>
     <button class="btn-ghost" id="bbClear">Clear</button>
-    <a class="btn-book" id="bbBook" href="#" target="_blank" rel="noopener">Book my slot →</a>
+    <button class="btn-book" id="bbBook" style="border:none;cursor:pointer;font:inherit;font-weight:700;">Book my slot →</button>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="bookModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="bmTitle">
+    <div id="bmForm">
+      <div class="modal-head">
+        <h2 id="bmTitle">Confirm your booking</h2>
+        <button class="modal-close" id="bmClose" aria-label="Close">×</button>
+      </div>
+      <div class="bm-slots" id="bmSlots"></div>
+      <label for="bmName">Name *</label>
+      <input type="text" id="bmName" autocomplete="name">
+      <label for="bmFb">Facebook name *</label>
+      <input type="text" id="bmFb" placeholder="So we can reach you on Messenger">
+      <label for="bmEmail">Email *</label>
+      <input type="email" id="bmEmail" autocomplete="email" placeholder="Your receipt goes here">
+      <div class="payblock">
+        💸 Send your payment to<br>
+        <strong>GCash 09485641730</strong><br>
+        PA*L JO***H L.<br>
+        Then upload the screenshot below to confirm your booking.
+      </div>
+      <label for="bmFile">Payment screenshot *</label>
+      <input type="file" id="bmFile" class="bm-file" accept="image/*,.pdf">
+      <div class="bm-error" id="bmError"></div>
+      <button class="bm-submit" id="bmSubmit">Submit booking</button>
+    </div>
+    <div class="bm-success hidden" id="bmSuccess">
+      <div class="big">🏓</div>
+      <strong>Booking received!</strong><br>
+      Your slots are reserved pending payment confirmation.<br>
+      A receipt was sent to your email.<br><br>
+      <button class="btn-ghost" id="bmDone">Done</button>
+    </div>
   </div>
 </div>
 
@@ -300,13 +385,17 @@ function pruneSelection() {
   });
 }
 
-/* Form deep-link with every selected slot: ?slots=date~slot,date~slot,... */
-function bookingUrl() {
-  var pairs = Object.keys(state.selected).sort().map(function (key) {
+/* Sorted [{date, slot, hour, price}] of everything selected. */
+function selectionList() {
+  return Object.keys(state.selected).sort().map(function (key) {
     var p = key.split("||");
-    return p[0] + "~" + p[1];
+    var hour = state.selected[key];
+    return { date: p[0], slot: p[1], hour: hour, price: state.data.priceByHour[hour] };
   });
-  return BOOKING_APP_URL + "?slots=" + encodeURIComponent(pairs.join(","));
+}
+
+function selectionTotal() {
+  return selectionList().reduce(function (sum, s) { return sum + s.price; }, 0);
 }
 
 function renderBottomBar() {
@@ -315,12 +404,9 @@ function renderBottomBar() {
   bar.classList.toggle("show", keys.length > 0);
   document.body.classList.toggle("has-selection", keys.length > 0);
   if (!keys.length) return;
-  var total = 0;
-  keys.forEach(function (key) { total += state.data.priceByHour[state.selected[key]]; });
   $("bbSummary").innerHTML =
     "<strong>" + keys.length + " slot" + (keys.length > 1 ? "s" : "") + " selected</strong> · Total " +
-    state.data.currency + total;
-  $("bbBook").href = bookingUrl();
+    state.data.currency + selectionTotal();
 }
 
 /* ---------- rendering ---------- */
@@ -435,6 +521,86 @@ $("navDate").onchange = function () {
 $("bbClear").onclick = function () {
   state.selected = {};
   renderAll();
+};
+
+/* ---------- booking popup ---------- */
+function openModal() {
+  var list = selectionList();
+  if (!list.length) return;
+  $("bmSlots").innerHTML = list.map(function (s) {
+    return "<div>" + fmtDay(s.date, { weekday: "short", month: "short", day: "numeric" }) +
+      " · " + s.slot + " — " + state.data.currency + s.price + "</div>";
+  }).join("") +
+    '<div class="bm-total">Total to send: ' + state.data.currency + selectionTotal() + "</div>";
+  $("bmError").textContent = "";
+  $("bmForm").classList.remove("hidden");
+  $("bmSuccess").classList.add("hidden");
+  $("bmSubmit").disabled = false;
+  $("bmSubmit").textContent = "Submit booking";
+  $("bookModal").classList.remove("hidden");
+  $("bmName").focus();
+}
+
+function closeModal() { $("bookModal").classList.add("hidden"); }
+
+$("bbBook").onclick = openModal;
+$("bmClose").onclick = closeModal;
+$("bmDone").onclick = closeModal;
+$("bookModal").onclick = function (ev) { if (ev.target === this) closeModal(); };
+
+$("bmSubmit").onclick = function () {
+  var name = $("bmName").value.trim();
+  var fb = $("bmFb").value.trim();
+  var email = $("bmEmail").value.trim();
+  var file = $("bmFile").files[0];
+  var err = $("bmError");
+
+  if (!name) { err.textContent = "Please enter your name."; return; }
+  if (!fb) { err.textContent = "Please enter your Facebook name."; return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = "Please enter a valid email address."; return; }
+  if (!file) { err.textContent = "Please upload your payment screenshot."; return; }
+  if (file.size > 10 * 1024 * 1024) { err.textContent = "Screenshot is over 10 MB — please send a smaller file."; return; }
+
+  err.textContent = "";
+  var btn = $("bmSubmit");
+  btn.disabled = true;
+  btn.textContent = "Submitting…";
+
+  var reader = new FileReader();
+  reader.onload = function () {
+    var payload = {
+      api: "book",
+      name: name,
+      fbName: fb,
+      email: email,
+      bookings: selectionList().map(function (s) {
+        return { date: s.date, slot: s.slot, court: state.data.court };
+      }),
+      fileName: file.name,
+      fileData: String(reader.result).split(",")[1]
+    };
+    fetch(BOOKING_APP_URL, { method: "POST", body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.error || "Something went wrong.");
+        $("bmForm").classList.add("hidden");
+        $("bmSuccess").classList.remove("hidden");
+        state.selected = {};
+        load(); // slots now show as booked
+      })
+      .catch(function (e2) {
+        btn.disabled = false;
+        btn.textContent = "Submit booking";
+        err.textContent = e2.message || "Couldn't submit — please try again.";
+        load(); // in case a slot was just taken, refresh so they can re-pick
+      });
+  };
+  reader.onerror = function () {
+    btn.disabled = false;
+    btn.textContent = "Submit booking";
+    err.textContent = "Couldn't read that file — please try another screenshot.";
+  };
+  reader.readAsDataURL(file);
 };
 // Delegated toggle for grid cells (the grid is re-rendered as innerHTML)
 $("gridTable").addEventListener("click", function (ev) {
