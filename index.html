@@ -23,6 +23,8 @@
     --open-bg:        rgba(12, 163, 12, 0.10);
     --booked-ink:     #52514e;
     --booked-bg:      rgba(11, 11, 11, 0.06);
+    --pend-ink:       #8a5c00;
+    --pend-bg:        rgba(250, 178, 25, 0.18);
     --past-ink:       #898781;
     --past-bg:        transparent;
   }
@@ -42,6 +44,8 @@
       --open-bg:        rgba(12, 163, 12, 0.14);
       --booked-ink:     #c3c2b7;
       --booked-bg:      rgba(255, 255, 255, 0.07);
+      --pend-ink:       #fab219;
+      --pend-bg:        rgba(250, 178, 25, 0.14);
       --past-ink:       #898781;
       --past-bg:        transparent;
     }
@@ -90,6 +94,7 @@
   .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; border: 1px solid var(--border); }
   .dot.open   { background: var(--open); }
   .dot.sel    { background: var(--brand); }
+  .dot.pend   { background: var(--pend-bg); border-color: var(--pend-ink); }
   .dot.booked { background: var(--booked-bg); }
   .dot.past   { background: repeating-linear-gradient(45deg, var(--hairline) 0 2px, transparent 2px 5px); }
 
@@ -192,6 +197,7 @@
   .grid-nav .btn-ghost:disabled { opacity: 0.4; cursor: default; }
   .range-label { margin-left: auto; font-size: 13px; color: var(--text-secondary); }
   td.c-booked { background: var(--booked-bg); color: var(--booked-ink); }
+  td.c-pending { background: var(--pend-bg); color: var(--pend-ink); font-weight: 600; }
   td.c-past   { color: var(--past-ink); }
 
   /* ---------- states ---------- */
@@ -242,6 +248,7 @@
     <div class="legend" role="note">
       <span><span class="dot open"></span> Open — tap to select</span>
       <span><span class="dot sel"></span> Selected</span>
+      <span><span class="dot pend"></span> Pending confirmation</span>
       <span><span class="dot booked"></span> Booked</span>
     </div>
   </header>
@@ -310,10 +317,16 @@
       <button class="bm-submit" id="bmSubmit">Submit booking</button>
     </div>
     <div class="bm-success hidden" id="bmSuccess">
-      <div class="big">🏓</div>
-      <strong>Booking received!</strong><br>
-      Your slots are reserved pending payment confirmation.<br>
-      A receipt was sent to your email.<br><br>
+      <div class="big">✅</div>
+      <h2 style="letter-spacing:0.06em;">BOOKING RECEIVED</h2>
+      <div style="margin:10px 0 2px;font-size:13px;color:var(--text-secondary);">Booking number</div>
+      <div id="bmRef" style="font-size:20px;font-weight:800;color:var(--brand-ink);"></div>
+      <div class="bm-slots" id="bmReceipt" style="text-align:left;margin:14px 0;"></div>
+      <p style="margin:0 0 14px;">
+        📸 Please <strong>screenshot this page</strong> and send it to
+        <strong>THE BARRACKS COURT</strong> Messenger — one of our admins will
+        confirm your booking.
+      </p>
       <button class="btn-ghost" id="bmDone">Done</button>
     </div>
   </div>
@@ -351,7 +364,8 @@ function manilaNow() {
 function slotStatus(dateStr, hourIdx) {
   var d = state.data;
   var slot = d.slots[hourIdx];
-  if (d.booked[dateStr] && d.booked[dateStr][slot]) return "booked";
+  var v = d.booked[dateStr] && d.booked[dateStr][slot];
+  if (v) return v === "pending" ? "pending" : "booked";
   var now = manilaNow();
   if (dateStr < now.date || (dateStr === now.date && hourIdx < now.hour)) return "past";
   return "open";
@@ -435,7 +449,8 @@ function renderGrid() {
           "' data-h='" + h + "' role='button' tabindex='0' aria-pressed='" + isSel +
           "' aria-label='Select " + slot + " on " + ds + "'>" + (isSel ? "✓ Selected" : "Open") + "</td>";
       } else {
-        html += "<td class='c-" + status + "'>" + (status === "booked" ? "Booked" : "") + "</td>";
+        var label = status === "booked" ? "Booked" : status === "pending" ? "Pending" : "";
+        html += "<td class='c-" + status + "'>" + label + "</td>";
       }
     });
     html += "</tr>";
@@ -579,14 +594,24 @@ $("bmSubmit").onclick = function () {
       fileName: file.name,
       fileData: String(reader.result).split(",")[1]
     };
+    // keep the receipt details for the success screen before clearing selection
+    var receiptList = selectionList();
+    var receiptTotal = selectionTotal();
     fetch(BOOKING_APP_URL, { method: "POST", body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (!res.ok) throw new Error(res.error || "Something went wrong.");
+        $("bmRef").textContent = res.bookingId || "—";
+        $("bmReceipt").innerHTML = receiptList.map(function (s) {
+          return "<div>" + fmtDay(s.date, { weekday: "short", month: "short", day: "numeric" }) +
+            " · " + s.slot + " — " + state.data.currency + s.price + "</div>";
+        }).join("") +
+          '<div class="bm-total">Total sent: ' + state.data.currency + receiptTotal +
+          " · " + name + "</div>";
         $("bmForm").classList.add("hidden");
         $("bmSuccess").classList.remove("hidden");
         state.selected = {};
-        load(); // slots now show as booked
+        load(); // the calendar now shows these slots as Pending
       })
       .catch(function (e2) {
         btn.disabled = false;
