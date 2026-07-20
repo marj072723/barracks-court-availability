@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Barracks Court — Live Availability</title>
+<style>
+  /* ============================================================
+     CONFIG lives in the <script> at the bottom of this file.
+     ============================================================ */
+  :root {
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --hairline:       #e1e0d9;
+    --border:         rgba(11, 11, 11, 0.10);
+    --brand:          #A8863C;
+    --brand-ink:      #7a6129;
+    --open:           #0ca30c;
+    --open-ink:       #006300;
+    --open-bg:        rgba(12, 163, 12, 0.10);
+    --booked-ink:     #52514e;
+    --booked-bg:      rgba(11, 11, 11, 0.06);
+    --past-ink:       #898781;
+    --past-bg:        transparent;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --hairline:       #2c2c2a;
+      --border:         rgba(255, 255, 255, 0.10);
+      --brand:          #c9a55a;
+      --brand-ink:      #c9a55a;
+      --open:           #0ca30c;
+      --open-ink:       #4fc44f;
+      --open-bg:        rgba(12, 163, 12, 0.14);
+      --booked-ink:     #c3c2b7;
+      --booked-bg:      rgba(255, 255, 255, 0.07);
+      --past-ink:       #898781;
+      --past-bg:        transparent;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page);
+    color: var(--text-primary);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 16px 16px 48px; }
+
+  /* ---------- header ---------- */
+  header { padding: 12px 0 4px; }
+  .eyebrow {
+    color: var(--brand-ink);
+    font-size: 12px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  h1 { font-size: 26px; font-weight: 800; margin: 2px 0 4px; }
+  .sub { color: var(--text-secondary); font-size: 14px; }
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    margin: 14px 0 6px;
+  }
+  .btn-book {
+    display: inline-block; background: var(--brand); color: #fff;
+    font-weight: 700; font-size: 14px; text-decoration: none;
+    padding: 10px 18px; border-radius: 8px;
+  }
+  .btn-book:hover { filter: brightness(1.06); }
+  .btn-ghost {
+    background: none; border: 1px solid var(--hairline); color: var(--text-secondary);
+    font: inherit; font-size: 13px; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--text-muted); }
+  .btn-ghost[aria-pressed="true"] { border-color: var(--brand); color: var(--brand-ink); font-weight: 600; }
+  .updated { color: var(--text-muted); font-size: 12px; margin-left: auto; }
+
+  /* ---------- legend ---------- */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 10px 0 14px; font-size: 13px; color: var(--text-secondary); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; border: 1px solid var(--border); }
+  .dot.open   { background: var(--open); }
+  .dot.booked { background: var(--booked-bg); }
+  .dot.past   { background: repeating-linear-gradient(45deg, var(--hairline) 0 2px, transparent 2px 5px); }
+
+  /* ---------- day chips ---------- */
+  .days {
+    display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 10px;
+    scrollbar-width: thin; -webkit-overflow-scrolling: touch;
+  }
+  .day-chip {
+    flex: 0 0 auto; min-width: 86px;
+    background: var(--surface-1); border: 1px solid var(--hairline);
+    border-radius: 10px; padding: 8px 10px; cursor: pointer;
+    font: inherit; text-align: center; color: var(--text-primary);
+  }
+  .day-chip .dow { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+  .day-chip .dnum { font-size: 17px; font-weight: 800; margin: 1px 0; }
+  .day-chip .free { font-size: 11px; color: var(--open-ink); font-weight: 600; }
+  .day-chip .free.none { color: var(--text-muted); font-weight: 400; }
+  .day-chip[aria-pressed="true"] { border: 2px solid var(--brand); padding: 7px 9px; }
+
+  /* ---------- day view (slot list) ---------- */
+  .panel {
+    background: var(--surface-1); border: 1px solid var(--hairline);
+    border-radius: 12px; overflow: hidden;
+  }
+  .panel-title { padding: 14px 16px 6px; font-size: 15px; font-weight: 700; }
+  .panel-title small { color: var(--text-muted); font-weight: 400; margin-left: 8px; }
+  ul.slots { list-style: none; }
+  ul.slots li {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; border-top: 1px solid var(--hairline);
+    font-size: 14px;
+  }
+  ul.slots li.past { color: var(--past-ink); }
+  .slot-time { flex: 1; font-variant-numeric: tabular-nums; }
+  .slot-price { color: var(--text-secondary); font-size: 13px; min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+  li.past .slot-price { color: var(--past-ink); }
+  .pill {
+    min-width: 84px; text-align: center;
+    font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+  }
+  .pill.open   { background: var(--open-bg);   color: var(--open-ink); }
+  .pill.booked { background: var(--booked-bg); color: var(--booked-ink); }
+  .pill.past   { background: var(--past-bg);   color: var(--past-ink); font-weight: 500; }
+
+  /* ---------- full grid view ---------- */
+  .grid-scroll { overflow-x: auto; }
+  table.grid { border-collapse: collapse; font-size: 12px; min-width: 100%; }
+  table.grid th, table.grid td {
+    border: 1px solid var(--hairline); padding: 6px 8px; text-align: center;
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  table.grid th { color: var(--text-secondary); font-weight: 700; background: var(--surface-1); }
+  table.grid th.slot-col, table.grid td.slot-col {
+    position: sticky; left: 0; background: var(--surface-1);
+    text-align: left; font-weight: 600; color: var(--text-primary);
+    box-shadow: 1px 0 0 var(--hairline);
+  }
+  td.c-open   { background: var(--open-bg);   color: var(--open-ink);   font-weight: 700; }
+  td.c-booked { background: var(--booked-bg); color: var(--booked-ink); }
+  td.c-past   { color: var(--past-ink); }
+
+  /* ---------- states ---------- */
+  .notice {
+    background: var(--surface-1); border: 1px solid var(--hairline);
+    border-radius: 12px; padding: 24px 20px; text-align: center;
+    color: var(--text-secondary); font-size: 14px; line-height: 1.6;
+  }
+  .notice code {
+    background: var(--booked-bg); padding: 2px 6px; border-radius: 4px;
+    font-size: 12px; word-break: break-all;
+  }
+  .hidden { display: none !important; }
+
+  footer { margin-top: 20px; color: var(--text-muted); font-size: 12px; text-align: center; line-height: 1.6; }
+
+  @media (min-width: 700px) {
+    h1 { font-size: 32px; }
+    .day-chip { min-width: 96px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Live Availability</div>
+    <h1 id="venueName">The Barracks Court</h1>
+    <div class="sub">Open 24 hours · ₱300/hr (6 AM–2 PM starts) · ₱400/hr (2 PM–6 AM starts) · Max 10 players</div>
+    <div class="toolbar">
+      <a id="bookBtn" class="btn-book" href="#" target="_blank" rel="noopener">Book a slot →</a>
+      <button id="viewToggle" class="btn-ghost" aria-pressed="false">Full 14-day grid</button>
+      <button id="refreshBtn" class="btn-ghost">Refresh</button>
+      <span class="updated" id="updated"></span>
+    </div>
+    <div class="legend" role="note">
+      <span><span class="dot open"></span> Open — available to book</span>
+      <span><span class="dot booked"></span> Booked</span>
+      <span><span class="dot past"></span> Ended (earlier today)</span>
+    </div>
+  </header>
+
+  <div id="setupNotice" class="notice hidden">
+    <strong>Almost there!</strong><br>
+    Open <code>index.html</code> and paste your Google Apps Script web-app URL
+    (the <code>/exec</code> link from your booking form deployment) into
+    <code>BOOKING_APP_URL</code> at the bottom of the file.
+  </div>
+  <div id="loading" class="notice">Loading live availability…</div>
+  <div id="errorNotice" class="notice hidden"></div>
+
+  <div id="dayView" class="hidden">
+    <div class="days" id="dayChips" role="tablist" aria-label="Pick a date"></div>
+    <div class="panel">
+      <div class="panel-title" id="dayTitle"></div>
+      <ul class="slots" id="slotList"></ul>
+    </div>
+  </div>
+
+  <div id="gridView" class="panel grid-scroll hidden">
+    <table class="grid" id="gridTable" aria-label="Availability, time slots by day"></table>
+  </div>
+
+  <footer>
+    Times shown in Philippine time (Asia/Manila). This page updates automatically every minute.<br>
+    A slot shows as <strong>Booked</strong> once a reservation with proof of payment is received.
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — the only things you ever need to edit
+   ============================================================ */
+// Your Google Apps Script web-app URL (Deploy > Web app > the /exec link).
+// The same link customers use for the booking form.
+var BOOKING_APP_URL = "PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE";
+var DAYS_TO_SHOW = 14;      // how many days ahead to display (max 30)
+var REFRESH_SECONDS = 60;   // auto-refresh interval
+var TIMEZONE = "Asia/Manila";
+
+/* ============================================================ */
+var state = { data: null, selectedDate: null, view: "day" };
+
+var $ = function (id) { return document.getElementById(id); };
+
+function manilaNow() {
+  var parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false
+  }).formatToParts(new Date());
+  var p = {};
+  parts.forEach(function (x) { p[x.type] = x.value; });
+  return { date: p.year + "-" + p.month + "-" + p.day, hour: Number(p.hour) % 24 };
+}
+
+function slotStatus(dateStr, hourIdx) {
+  var d = state.data;
+  var slot = d.slots[hourIdx];
+  if (d.booked[dateStr] && d.booked[dateStr][slot]) return "booked";
+  var now = manilaNow();
+  if (dateStr < now.date || (dateStr === now.date && hourIdx < now.hour)) return "past";
+  return "open";
+}
+
+function openCount(dateStr) {
+  var n = 0;
+  for (var h = 0; h < state.data.slots.length; h++) {
+    if (slotStatus(dateStr, h) === "open") n++;
+  }
+  return n;
+}
+
+function fmtDay(dateStr, opts) {
+  var p = dateStr.split("-");
+  var dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  return dt.toLocaleDateString("en-PH", opts);
+}
+
+function shortSlot(slot) { return slot.split(" - ")[0]; }
+
+/* ---------- rendering ---------- */
+function renderDayChips() {
+  var host = $("dayChips");
+  host.innerHTML = "";
+  var today = manilaNow().date;
+  state.data.dates.forEach(function (ds) {
+    var b = document.createElement("button");
+    b.className = "day-chip";
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-pressed", String(ds === state.selectedDate));
+    var free = openCount(ds);
+    var dowLabel = ds === today ? "Today" : fmtDay(ds, { weekday: "short" });
+    b.innerHTML =
+      '<div class="dow">' + dowLabel + "</div>" +
+      '<div class="dnum">' + fmtDay(ds, { month: "short", day: "numeric" }) + "</div>" +
+      '<div class="free' + (free === 0 ? " none" : "") + '">' +
+      (free === 0 ? "Fully booked" : free + " open") + "</div>";
+    b.onclick = function () { state.selectedDate = ds; renderAll(); };
+    host.appendChild(b);
+  });
+}
+
+function renderSlotList() {
+  var d = state.data;
+  $("dayTitle").innerHTML =
+    fmtDay(state.selectedDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) +
+    "<small>" + openCount(state.selectedDate) + " of " + d.slots.length + " slots open</small>";
+  var ul = $("slotList");
+  ul.innerHTML = "";
+  d.slots.forEach(function (slot, h) {
+    var status = slotStatus(state.selectedDate, h);
+    var li = document.createElement("li");
+    if (status === "past") li.className = "past";
+    var label = status === "open" ? "✓ Open" : status === "booked" ? "✕ Booked" : "Ended";
+    li.innerHTML =
+      '<span class="slot-time">' + slot + "</span>" +
+      '<span class="slot-price">' + d.currency + d.priceByHour[h] + "/hr</span>" +
+      '<span class="pill ' + status + '">' + label + "</span>";
+    ul.appendChild(li);
+  });
+}
+
+function renderGrid() {
+  var d = state.data;
+  var today = manilaNow().date;
+  var html = "<thead><tr><th class='slot-col'>Time slot</th>";
+  d.dates.forEach(function (ds) {
+    html += "<th>" + (ds === today ? "Today" : fmtDay(ds, { weekday: "short" })) +
+      "<br>" + fmtDay(ds, { month: "short", day: "numeric" }) + "</th>";
+  });
+  html += "</tr></thead><tbody>";
+  d.slots.forEach(function (slot, h) {
+    html += "<tr><td class='slot-col'>" + shortSlot(slot) + " · " + d.currency + d.priceByHour[h] + "</td>";
+    d.dates.forEach(function (ds) {
+      var status = slotStatus(ds, h);
+      var label = status === "open" ? "Open" : status === "booked" ? "Booked" : "—";
+      html += "<td class='c-" + status + "'>" + label + "</td>";
+    });
+    html += "</tr>";
+  });
+  html += "</tbody>";
+  $("gridTable").innerHTML = html;
+}
+
+function renderAll() {
+  if (!state.data) return;
+  $("venueName").textContent = state.data.venue;
+  renderDayChips();
+  renderSlotList();
+  renderGrid();
+  $("dayView").classList.toggle("hidden", state.view !== "day");
+  $("gridView").classList.toggle("hidden", state.view !== "grid");
+  $("viewToggle").setAttribute("aria-pressed", String(state.view === "grid"));
+  $("viewToggle").textContent = state.view === "grid" ? "Day-by-day view" : "Full 14-day grid";
+}
+
+/* ---------- data ---------- */
+function load() {
+  if (!BOOKING_APP_URL || BOOKING_APP_URL.indexOf("PASTE_") === 0) {
+    $("loading").classList.add("hidden");
+    $("setupNotice").classList.remove("hidden");
+    return;
+  }
+  $("bookBtn").href = BOOKING_APP_URL;
+  var url = BOOKING_APP_URL + "?api=availability&days=" + DAYS_TO_SHOW;
+  fetch(url)
+    .then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      state.data = data;
+      if (!state.selectedDate || data.dates.indexOf(state.selectedDate) === -1) {
+        state.selectedDate = data.dates[0];
+      }
+      $("loading").classList.add("hidden");
+      $("errorNotice").classList.add("hidden");
+      renderAll();
+      $("updated").textContent = "Updated " +
+        new Date().toLocaleTimeString("en-PH", { timeZone: TIMEZONE, hour: "numeric", minute: "2-digit" });
+    })
+    .catch(function (err) {
+      $("loading").classList.add("hidden");
+      if (!state.data) { // keep showing stale data on refresh failures
+        var e = $("errorNotice");
+        e.classList.remove("hidden");
+        e.innerHTML = "<strong>Couldn't load availability.</strong><br>" +
+          "Please refresh in a moment. (" + err.message + ")";
+      }
+    });
+}
+
+$("refreshBtn").onclick = load;
+$("viewToggle").onclick = function () {
+  state.view = state.view === "day" ? "grid" : "day";
+  renderAll();
+};
+setInterval(load, REFRESH_SECONDS * 1000);
+load();
+</script>
+</body>
+</html>
