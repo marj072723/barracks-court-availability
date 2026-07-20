@@ -89,6 +89,7 @@
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; border: 1px solid var(--border); }
   .dot.open   { background: var(--open); }
+  .dot.sel    { background: var(--brand); }
   .dot.booked { background: var(--booked-bg); }
   .dot.past   { background: repeating-linear-gradient(45deg, var(--hairline) 0 2px, transparent 2px 5px); }
 
@@ -126,7 +127,20 @@
   }
   td.c-open   { background: var(--open-bg);   color: var(--open-ink);   font-weight: 700; cursor: pointer; user-select: none; }
   td.c-open:hover, td.c-open:focus-visible { text-decoration: underline; outline: none; }
-  td.c-open.selected { box-shadow: inset 0 0 0 2px var(--brand); color: var(--brand-ink); }
+  td.c-open.selected { background: var(--brand); color: #fff; text-decoration: none; }
+  .tcell { display: inline; }
+  .pcell { display: inline; color: var(--text-secondary); font-weight: 400; }
+  .pcell::before { content: " · "; }
+
+  /* ---------- date navigation ---------- */
+  .grid-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }
+  .grid-nav input[type="date"] {
+    background: var(--surface-1); border: 1px solid var(--hairline); color: var(--text-primary);
+    border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 13px;
+    color-scheme: light dark;
+  }
+  .grid-nav .btn-ghost:disabled { opacity: 0.4; cursor: default; }
+  .range-label { margin-left: auto; font-size: 13px; color: var(--text-secondary); }
   td.c-booked { background: var(--booked-bg); color: var(--booked-ink); }
   td.c-past   { color: var(--past-ink); }
 
@@ -147,6 +161,22 @@
   @media (min-width: 700px) {
     h1 { font-size: 32px; }
   }
+
+  /* ---------- compact mobile layout ---------- */
+  @media (max-width: 620px) {
+    .wrap { padding: 12px 10px 48px; }
+    h1 { font-size: 22px; }
+    .sub { font-size: 12px; }
+    .btn-book { padding: 9px 14px; font-size: 13px; }
+    .legend { gap: 10px; font-size: 12px; }
+    table.grid { font-size: 11px; }
+    table.grid th, table.grid td { padding: 5px 6px; }
+    .tcell { display: block; }
+    .pcell { display: block; font-size: 10px; }
+    .pcell::before { content: ""; }
+    .range-label { display: none; }
+    .bb-summary { font-size: 12px; }
+  }
 </style>
 </head>
 <body>
@@ -162,6 +192,7 @@
     </div>
     <div class="legend" role="note">
       <span><span class="dot open"></span> Open — tap to select</span>
+      <span><span class="dot sel"></span> Selected</span>
       <span><span class="dot booked"></span> Booked</span>
     </div>
   </header>
@@ -178,6 +209,12 @@
   <div id="gridView" class="hidden">
     <div class="panel-hint" style="padding: 0 2px 8px;">
       Tap open slots to select them (you can pick several, across different days), then press “Book my slot”.
+    </div>
+    <div class="grid-nav">
+      <button id="navPrev" class="btn-ghost" aria-label="Earlier days">‹ Earlier</button>
+      <input type="date" id="navDate" aria-label="Jump to date">
+      <button id="navNext" class="btn-ghost" aria-label="Later days">Later ›</button>
+      <span class="range-label" id="rangeLabel"></span>
     </div>
     <div class="panel grid-scroll">
       <table class="grid" id="gridTable" aria-label="Availability, time slots by day"></table>
@@ -205,13 +242,15 @@
 // Your Google Apps Script web-app URL (Deploy > Web app > the /exec link).
 // The same link customers use for the booking form.
 var BOOKING_APP_URL = "PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE";
-var DAYS_TO_SHOW = 7;       // how many days ahead to display (max 30)
+var VISIBLE_DAYS = 7;       // columns shown at once
+var FETCH_DAYS = 30;        // how far ahead is loaded/navigable (max 30)
 var REFRESH_SECONDS = 60;   // auto-refresh interval
 var TIMEZONE = "Asia/Manila";
 
 /* ============================================================ */
 // selected: map "date||slot" -> hour index, for multi-slot booking
-var state = { data: null, selected: {} };
+// startIdx: first visible day in the 7-day window
+var state = { data: null, selected: {}, startIdx: 0 };
 
 var $ = function (id) { return document.getElementById(id); };
 
@@ -286,24 +325,30 @@ function renderBottomBar() {
 }
 
 /* ---------- rendering ---------- */
+function visibleDates() {
+  return state.data.dates.slice(state.startIdx, state.startIdx + VISIBLE_DAYS);
+}
+
 function renderGrid() {
   var d = state.data;
+  var days = visibleDates();
   var today = manilaNow().date;
   var html = "<thead><tr><th class='slot-col'>Time slot</th>";
-  d.dates.forEach(function (ds) {
+  days.forEach(function (ds) {
     html += "<th>" + (ds === today ? "Today" : fmtDay(ds, { weekday: "short" })) +
       "<br>" + fmtDay(ds, { month: "short", day: "numeric" }) + "</th>";
   });
   html += "</tr></thead><tbody>";
   d.slots.forEach(function (slot, h) {
-    html += "<tr><td class='slot-col'>" + shortSlot(slot) + " · " + d.currency + d.priceByHour[h] + "</td>";
-    d.dates.forEach(function (ds) {
+    html += "<tr><td class='slot-col'><span class='tcell'>" + shortSlot(slot) +
+      "</span><span class='pcell'>" + d.currency + d.priceByHour[h] + "</span></td>";
+    days.forEach(function (ds) {
       var status = slotStatus(ds, h);
       if (status === "open") {
         var isSel = selKey(ds, slot) in state.selected;
         html += "<td class='c-open" + (isSel ? " selected" : "") + "' data-date='" + ds +
           "' data-h='" + h + "' role='button' tabindex='0' aria-pressed='" + isSel +
-          "' aria-label='Select " + slot + " on " + ds + "'>" + (isSel ? "✓ Sel." : "Open") + "</td>";
+          "' aria-label='Select " + slot + " on " + ds + "'>" + (isSel ? "✓ Selected" : "Open") + "</td>";
       } else {
         html += "<td class='c-" + status + "'>" + (status === "booked" ? "Booked" : "") + "</td>";
       }
@@ -314,9 +359,24 @@ function renderGrid() {
   $("gridTable").innerHTML = html;
 }
 
+function renderNav() {
+  var dates = state.data.dates;
+  var days = visibleDates();
+  var picker = $("navDate");
+  picker.min = dates[0];
+  picker.max = dates[dates.length - 1];
+  picker.value = days[0];
+  $("navPrev").disabled = state.startIdx === 0;
+  $("navNext").disabled = state.startIdx + VISIBLE_DAYS >= dates.length;
+  $("rangeLabel").textContent =
+    fmtDay(days[0], { month: "short", day: "numeric" }) + " – " +
+    fmtDay(days[days.length - 1], { month: "short", day: "numeric" });
+}
+
 function renderAll() {
   if (!state.data) return;
   $("venueName").textContent = state.data.venue;
+  renderNav();
   renderGrid();
   renderBottomBar();
   $("gridView").classList.remove("hidden");
@@ -330,7 +390,7 @@ function load() {
     return;
   }
   $("bookBtn").href = BOOKING_APP_URL;
-  var url = BOOKING_APP_URL + "?api=availability&days=" + DAYS_TO_SHOW;
+  var url = BOOKING_APP_URL + "?api=availability&days=" + FETCH_DAYS;
   fetch(url)
     .then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
@@ -338,6 +398,7 @@ function load() {
     })
     .then(function (data) {
       state.data = data;
+      state.startIdx = Math.max(0, Math.min(state.startIdx, data.dates.length - VISIBLE_DAYS));
       pruneSelection();
       $("loading").classList.add("hidden");
       $("errorNotice").classList.add("hidden");
@@ -357,6 +418,22 @@ function load() {
 }
 
 $("refreshBtn").onclick = load;
+
+function shiftWindow(delta) {
+  var len = state.data.dates.length;
+  state.startIdx = Math.max(0, Math.min(state.startIdx + delta, len - VISIBLE_DAYS));
+  renderAll();
+}
+$("navPrev").onclick = function () { shiftWindow(-VISIBLE_DAYS); };
+$("navNext").onclick = function () { shiftWindow(VISIBLE_DAYS); };
+$("navDate").onchange = function () {
+  var i = state.data ? state.data.dates.indexOf(this.value) : -1;
+  if (i >= 0) {
+    state.startIdx = Math.max(0, Math.min(i, state.data.dates.length - VISIBLE_DAYS));
+    renderAll();
+  }
+};
+
 $("bbClear").onclick = function () {
   state.selected = {};
   renderAll();

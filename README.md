@@ -83,7 +83,8 @@ Every future `git push` redeploys automatically.
 
 Everything is in the CONFIG block at the bottom of `index.html`:
 
-- `DAYS_TO_SHOW` — days ahead to display (max 30, matches the API cap)
+- `VISIBLE_DAYS` — columns shown at once (default 7)
+- `FETCH_DAYS` — how far ahead customers can navigate (max 30, matches the API cap)
 - `REFRESH_SECONDS` — auto-refresh interval
 - Slot times and prices come from the API automatically — change them once in
   `Code.gs` and the dashboard follows.
