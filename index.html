@@ -186,7 +186,6 @@
     <div class="legend" role="note">
       <span><span class="dot open"></span> Open — available to book</span>
       <span><span class="dot booked"></span> Booked</span>
-      <span><span class="dot past"></span> Ended (earlier today)</span>
     </div>
   </header>
 
@@ -292,22 +291,27 @@ function renderDayChips() {
 
 function renderSlotList() {
   var d = state.data;
-  $("dayTitle").innerHTML =
-    fmtDay(state.selectedDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) +
-    "<small>" + openCount(state.selectedDate) + " of " + d.slots.length + " slots open</small>";
   var ul = $("slotList");
   ul.innerHTML = "";
+  var remaining = 0;
   d.slots.forEach(function (slot, h) {
     var status = slotStatus(state.selectedDate, h);
+    if (status === "past") return; // ended slots are hidden entirely
+    remaining++;
     var li = document.createElement("li");
-    if (status === "past") li.className = "past";
-    var label = status === "open" ? "✓ Open" : status === "booked" ? "✕ Booked" : "Ended";
+    var label = status === "open" ? "✓ Open" : "✕ Booked";
     li.innerHTML =
       '<span class="slot-time">' + slot + "</span>" +
       '<span class="slot-price">' + d.currency + d.priceByHour[h] + "/hr</span>" +
       '<span class="pill ' + status + '">' + label + "</span>";
     ul.appendChild(li);
   });
+  $("dayTitle").innerHTML =
+    fmtDay(state.selectedDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) +
+    "<small>" + openCount(state.selectedDate) + " of " + remaining + " remaining slots open</small>";
+  if (remaining === 0) {
+    ul.innerHTML = '<li><span class="slot-time" style="color:var(--past-ink)">All of today\'s slots have ended — check the next day.</span></li>';
+  }
 }
 
 function renderGrid() {
@@ -323,7 +327,7 @@ function renderGrid() {
     html += "<tr><td class='slot-col'>" + shortSlot(slot) + " · " + d.currency + d.priceByHour[h] + "</td>";
     d.dates.forEach(function (ds) {
       var status = slotStatus(ds, h);
-      var label = status === "open" ? "Open" : status === "booked" ? "Booked" : "—";
+      var label = status === "open" ? "Open" : status === "booked" ? "Booked" : "";
       html += "<td class='c-" + status + "'>" + label + "</td>";
     });
     html += "</tr>";
