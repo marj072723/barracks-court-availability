@@ -378,7 +378,19 @@ function fmtDay(dateStr, opts) {
   return dt.toLocaleDateString("en-PH", opts);
 }
 
-function shortSlot(slot) { return slot.split(" - ")[0]; }
+// "12:00 AM - 1:00 AM" -> "12-1am"; "11:00 PM - 12:00 AM" -> "11pm-12am"
+// (shows both meridians only when the slot crosses noon/midnight).
+// Display-only — the raw slot string is always what's sent to the backend,
+// since that's the exact text your Bookings sheet matches against.
+function compactSlot(slot) {
+  var parts = slot.split(" - ");
+  var start = parts[0].split(" "); // ["12:00", "AM"]
+  var end = parts[1].split(" ");
+  var startHour = start[0].split(":")[0];
+  var endHour = end[0].split(":")[0];
+  if (start[1] === end[1]) return startHour + "-" + endHour + start[1].toLowerCase();
+  return startHour + start[1].toLowerCase() + "-" + endHour + end[1].toLowerCase();
+}
 
 function selKey(dateStr, slot) { return dateStr + "||" + slot; }
 
@@ -440,7 +452,7 @@ function renderGrid() {
   });
   html += "</tr></thead><tbody>";
   d.slots.forEach(function (slot, h) {
-    html += "<tr><td class='slot-col'><span class='tcell'>" + shortSlot(slot) +
+    html += "<tr><td class='slot-col'><span class='tcell'>" + compactSlot(slot) +
       "</span><span class='pcell'>" + d.currency + d.priceByHour[h] + "</span></td>";
     days.forEach(function (ds) {
       var status = slotStatus(ds, h);
@@ -545,7 +557,7 @@ function openModal() {
   if (!list.length) return;
   $("bmSlots").innerHTML = list.map(function (s) {
     return "<div>" + fmtDay(s.date, { weekday: "short", month: "short", day: "numeric" }) +
-      " · " + s.slot + " — " + state.data.currency + s.price + "</div>";
+      " · " + compactSlot(s.slot) + " — " + state.data.currency + s.price + "</div>";
   }).join("") +
     '<div class="bm-total">Total to send: ' + state.data.currency + selectionTotal() + "</div>";
   $("bmError").textContent = "";
@@ -605,7 +617,7 @@ $("bmSubmit").onclick = function () {
         $("bmRef").textContent = res.bookingId || "—";
         $("bmReceipt").innerHTML = receiptList.map(function (s) {
           return "<div>" + fmtDay(s.date, { weekday: "short", month: "short", day: "numeric" }) +
-            " · " + s.slot + " — " + state.data.currency + s.price + "</div>";
+            " · " + compactSlot(s.slot) + " — " + state.data.currency + s.price + "</div>";
         }).join("") +
           '<div class="bm-total">Total sent: ' + state.data.currency + receiptTotal +
           " · " + name + "</div>";
