@@ -378,8 +378,7 @@ function fmtDay(dateStr, opts) {
   return dt.toLocaleDateString("en-PH", opts);
 }
 
-// "12:00 AM - 1:00 AM" -> "12-1am"; "11:00 PM - 12:00 AM" -> "11pm-12am"
-// (shows both meridians only when the slot crosses noon/midnight).
+// "12:00 AM - 1:00 AM" -> "12AM-1AM"; "11:00 PM - 12:00 AM" -> "11PM-12AM"
 // Display-only — the raw slot string is always what's sent to the backend,
 // since that's the exact text your Bookings sheet matches against.
 function compactSlot(slot) {
@@ -388,8 +387,7 @@ function compactSlot(slot) {
   var end = parts[1].split(" ");
   var startHour = start[0].split(":")[0];
   var endHour = end[0].split(":")[0];
-  if (start[1] === end[1]) return startHour + "-" + endHour + start[1].toLowerCase();
-  return startHour + start[1].toLowerCase() + "-" + endHour + end[1].toLowerCase();
+  return startHour + start[1].toUpperCase() + "-" + endHour + end[1].toUpperCase();
 }
 
 function selKey(dateStr, slot) { return dateStr + "||" + slot; }
