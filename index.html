@@ -122,14 +122,23 @@
     padding: 10px 16px; border-top: 1px solid var(--hairline);
     font-size: 14px;
   }
-  ul.slots li.linked { padding: 0; }
-  ul.slots li.linked a {
-    flex: 1; display: flex; align-items: center; gap: 12px;
-    padding: 10px 16px; text-decoration: none; color: inherit;
-  }
-  ul.slots li.linked a:hover, ul.slots li.linked a:focus-visible { background: var(--open-bg); }
-  .chev { color: var(--text-muted); font-size: 16px; line-height: 1; }
+  ul.slots li.linked { cursor: pointer; user-select: none; }
+  ul.slots li.linked:hover, ul.slots li.linked:focus-visible { background: var(--open-bg); outline: none; }
+  ul.slots li.selected { background: var(--open-bg); box-shadow: inset 3px 0 0 var(--brand); }
   .panel-hint { padding: 0 16px 10px; font-size: 12px; color: var(--text-muted); }
+
+  /* ---------- sticky booking bar ---------- */
+  .bottombar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+    background: var(--surface-1); border-top: 1px solid var(--hairline);
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    display: none;
+  }
+  .bottombar.show { display: block; }
+  .bottombar-inner { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
+  .bb-summary { flex: 1; font-size: 13px; color: var(--text-secondary); min-width: 0; }
+  .bb-summary strong { color: var(--text-primary); }
+  body.has-selection .wrap { padding-bottom: 110px; }
   ul.slots li.past { color: var(--past-ink); }
   .slot-time { flex: 1; font-variant-numeric: tabular-nums; }
   .slot-price { color: var(--text-secondary); font-size: 13px; min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -155,11 +164,9 @@
     text-align: left; font-weight: 600; color: var(--text-primary);
     box-shadow: 1px 0 0 var(--hairline);
   }
-  td.c-open   { background: var(--open-bg);   color: var(--open-ink);   font-weight: 700; padding: 0; }
-  td.c-open a {
-    display: block; padding: 6px 8px; color: inherit; text-decoration: none;
-  }
-  td.c-open a:hover, td.c-open a:focus-visible { text-decoration: underline; }
+  td.c-open   { background: var(--open-bg);   color: var(--open-ink);   font-weight: 700; cursor: pointer; user-select: none; }
+  td.c-open:hover, td.c-open:focus-visible { text-decoration: underline; outline: none; }
+  td.c-open.selected { box-shadow: inset 0 0 0 2px var(--brand); color: var(--brand-ink); }
   td.c-booked { background: var(--booked-bg); color: var(--booked-ink); }
   td.c-past   { color: var(--past-ink); }
 
@@ -196,7 +203,7 @@
       <span class="updated" id="updated"></span>
     </div>
     <div class="legend" role="note">
-      <span><span class="dot open"></span> Open — tap to book</span>
+      <span><span class="dot open"></span> Open — tap to select</span>
       <span><span class="dot booked"></span> Booked</span>
     </div>
   </header>
@@ -229,6 +236,14 @@
   </footer>
 </div>
 
+<div class="bottombar" id="bottomBar">
+  <div class="bottombar-inner">
+    <div class="bb-summary" id="bbSummary"></div>
+    <button class="btn-ghost" id="bbClear">Clear</button>
+    <a class="btn-book" id="bbBook" href="#" target="_blank" rel="noopener">Book my slot →</a>
+  </div>
+</div>
+
 <script>
 /* ============================================================
    CONFIG — the only things you ever need to edit
@@ -236,12 +251,13 @@
 // Your Google Apps Script web-app URL (Deploy > Web app > the /exec link).
 // The same link customers use for the booking form.
 var BOOKING_APP_URL = "PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE";
-var DAYS_TO_SHOW = 14;      // how many days ahead to display (max 30)
+var DAYS_TO_SHOW = 7;       // how many days ahead to display (max 30)
 var REFRESH_SECONDS = 60;   // auto-refresh interval
 var TIMEZONE = "Asia/Manila";
 
 /* ============================================================ */
-var state = { data: null, selectedDate: null, view: "day" };
+// selected: map "date||slot" -> hour index, for multi-slot booking
+var state = { data: null, selectedDate: null, view: "day", selected: {} };
 
 var $ = function (id) { return document.getElementById(id); };
 
@@ -280,8 +296,47 @@ function fmtDay(dateStr, opts) {
 
 function shortSlot(slot) { return slot.split(" - ")[0]; }
 
-function bookingUrl(dateStr, slot) {
-  return BOOKING_APP_URL + "?date=" + dateStr + "&slot=" + encodeURIComponent(slot);
+function selKey(dateStr, slot) { return dateStr + "||" + slot; }
+
+function toggleSelect(dateStr, hourIdx) {
+  var key = selKey(dateStr, state.data.slots[hourIdx]);
+  if (key in state.selected) delete state.selected[key];
+  else state.selected[key] = hourIdx;
+  renderAll();
+}
+
+/* Drop selections that got booked or slipped into the past since last refresh. */
+function pruneSelection() {
+  Object.keys(state.selected).forEach(function (key) {
+    var dateStr = key.split("||")[0];
+    if (state.data.dates.indexOf(dateStr) === -1 ||
+        slotStatus(dateStr, state.selected[key]) !== "open") {
+      delete state.selected[key];
+    }
+  });
+}
+
+/* Form deep-link with every selected slot: ?slots=date~slot,date~slot,... */
+function bookingUrl() {
+  var pairs = Object.keys(state.selected).sort().map(function (key) {
+    var p = key.split("||");
+    return p[0] + "~" + p[1];
+  });
+  return BOOKING_APP_URL + "?slots=" + encodeURIComponent(pairs.join(","));
+}
+
+function renderBottomBar() {
+  var keys = Object.keys(state.selected);
+  var bar = $("bottomBar");
+  bar.classList.toggle("show", keys.length > 0);
+  document.body.classList.toggle("has-selection", keys.length > 0);
+  if (!keys.length) return;
+  var total = 0;
+  keys.forEach(function (key) { total += state.data.priceByHour[state.selected[key]]; });
+  $("bbSummary").innerHTML =
+    "<strong>" + keys.length + " slot" + (keys.length > 1 ? "s" : "") + " selected</strong> · Total " +
+    state.data.currency + total;
+  $("bbBook").href = bookingUrl();
 }
 
 /* ---------- rendering ---------- */
@@ -320,11 +375,19 @@ function renderSlotList() {
       '<span class="slot-time">' + slot + "</span>" +
       '<span class="slot-price">' + d.currency + d.priceByHour[h] + "/hr</span>";
     if (status === "open") {
-      li.className = "linked";
-      li.innerHTML =
-        '<a href="' + bookingUrl(state.selectedDate, slot) + '" target="_blank" rel="noopener"' +
-        ' aria-label="Book ' + slot + '">' + inner +
-        '<span class="pill open">✓ Open</span><span class="chev">›</span></a>';
+      var isSel = selKey(state.selectedDate, slot) in state.selected;
+      li.className = "linked" + (isSel ? " selected" : "");
+      li.setAttribute("role", "button");
+      li.setAttribute("tabindex", "0");
+      li.setAttribute("aria-pressed", String(isSel));
+      li.setAttribute("aria-label", "Select " + slot);
+      li.innerHTML = inner + '<span class="pill open">' + (isSel ? "✓ Selected" : "Open") + "</span>";
+      (function (hh) {
+        li.onclick = function () { toggleSelect(state.selectedDate, hh); };
+        li.onkeydown = function (ev) {
+          if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggleSelect(state.selectedDate, hh); }
+        };
+      })(h);
     } else {
       li.innerHTML = inner + '<span class="pill booked">✕ Booked</span>';
     }
@@ -333,7 +396,9 @@ function renderSlotList() {
   $("dayTitle").innerHTML =
     fmtDay(state.selectedDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) +
     "<small>" + openCount(state.selectedDate) + " of " + remaining + " remaining slots open</small>";
-  $("dayHint").textContent = openCount(state.selectedDate) > 0 ? "Tap an open slot to book it." : "";
+  $("dayHint").textContent = openCount(state.selectedDate) > 0
+    ? "Tap open slots to select them (you can pick several, across different days), then press “Book my slot”."
+    : "";
   if (remaining === 0) {
     ul.innerHTML = '<li><span class="slot-time" style="color:var(--past-ink)">All of today\'s slots have ended — check the next day.</span></li>';
   }
@@ -352,11 +417,14 @@ function renderGrid() {
     html += "<tr><td class='slot-col'>" + shortSlot(slot) + " · " + d.currency + d.priceByHour[h] + "</td>";
     d.dates.forEach(function (ds) {
       var status = slotStatus(ds, h);
-      var cell = status === "open"
-        ? "<a href='" + bookingUrl(ds, slot) + "' target='_blank' rel='noopener' aria-label='Book " +
-          slot + " on " + ds + "'>Open</a>"
-        : status === "booked" ? "Booked" : "";
-      html += "<td class='c-" + status + "'>" + cell + "</td>";
+      if (status === "open") {
+        var isSel = selKey(ds, slot) in state.selected;
+        html += "<td class='c-open" + (isSel ? " selected" : "") + "' data-date='" + ds +
+          "' data-h='" + h + "' role='button' tabindex='0' aria-pressed='" + isSel +
+          "' aria-label='Select " + slot + " on " + ds + "'>" + (isSel ? "✓ Sel." : "Open") + "</td>";
+      } else {
+        html += "<td class='c-" + status + "'>" + (status === "booked" ? "Booked" : "") + "</td>";
+      }
     });
     html += "</tr>";
   });
@@ -370,10 +438,13 @@ function renderAll() {
   renderDayChips();
   renderSlotList();
   renderGrid();
+  renderBottomBar();
   $("dayView").classList.toggle("hidden", state.view !== "day");
   $("gridView").classList.toggle("hidden", state.view !== "grid");
   $("viewToggle").setAttribute("aria-pressed", String(state.view === "grid"));
-  $("viewToggle").textContent = state.view === "grid" ? "Day-by-day view" : "Full 14-day grid";
+  $("viewToggle").textContent = state.view === "grid"
+    ? "Day-by-day view"
+    : "Full " + state.data.dates.length + "-day grid";
 }
 
 /* ---------- data ---------- */
@@ -395,6 +466,7 @@ function load() {
       if (!state.selectedDate || data.dates.indexOf(state.selectedDate) === -1) {
         state.selectedDate = data.dates[0];
       }
+      pruneSelection();
       $("loading").classList.add("hidden");
       $("errorNotice").classList.add("hidden");
       renderAll();
@@ -417,6 +489,20 @@ $("viewToggle").onclick = function () {
   state.view = state.view === "day" ? "grid" : "day";
   renderAll();
 };
+$("bbClear").onclick = function () {
+  state.selected = {};
+  renderAll();
+};
+// Delegated toggle for grid cells (the grid is re-rendered as innerHTML)
+$("gridTable").addEventListener("click", function (ev) {
+  var td = ev.target.closest("td.c-open");
+  if (td) toggleSelect(td.dataset.date, Number(td.dataset.h));
+});
+$("gridTable").addEventListener("keydown", function (ev) {
+  if (ev.key !== "Enter" && ev.key !== " ") return;
+  var td = ev.target.closest("td.c-open");
+  if (td) { ev.preventDefault(); toggleSelect(td.dataset.date, Number(td.dataset.h)); }
+});
 setInterval(load, REFRESH_SECONDS * 1000);
 load();
 </script>
