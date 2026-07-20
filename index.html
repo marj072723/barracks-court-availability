@@ -186,7 +186,6 @@
     <h1 id="venueName">The Barracks Court</h1>
     <div class="sub">Open 24 hours · ₱300/hr (6 AM–2 PM starts) · ₱400/hr (2 PM–6 AM starts) · Max 10 players</div>
     <div class="toolbar">
-      <a id="bookBtn" class="btn-book" href="#" target="_blank" rel="noopener">Book a slot →</a>
       <button id="refreshBtn" class="btn-ghost">Refresh</button>
       <span class="updated" id="updated"></span>
     </div>
@@ -389,7 +388,6 @@ function load() {
     $("setupNotice").classList.remove("hidden");
     return;
   }
-  $("bookBtn").href = BOOKING_APP_URL;
   var url = BOOKING_APP_URL + "?api=availability&days=" + FETCH_DAYS;
   fetch(url)
     .then(function (r) {
