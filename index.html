@@ -216,6 +216,19 @@
     background: var(--booked-bg); padding: 2px 6px; border-radius: 4px;
     font-size: 12px; word-break: break-all;
   }
+  /* Shown in place of the calendar when reservations are switched off. */
+  .notice.closed {
+    background: var(--pend-bg); border-color: var(--pend-ink);
+    color: var(--pend-ink); padding: 32px 22px;
+  }
+  .notice.closed .closed-title {
+    display: block; font-size: 17px; font-weight: 700; margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+  .notice.closed .closed-msg { font-size: 15px; line-height: 1.6; }
+  .notice.closed .closed-sub {
+    display: block; margin-top: 14px; font-size: 13px; opacity: 0.85;
+  }
   .hidden { display: none !important; }
 
   footer { margin-top: 20px; color: var(--text-muted); font-size: 12px; text-align: center; line-height: 1.6; }
@@ -244,7 +257,7 @@
 <body>
 <div class="wrap">
   <header>
-    <div class="eyebrow">Live Availability</div>
+    <div class="eyebrow" id="eyebrow">Live Availability</div>
     <h1 id="venueName">The Barracks Court</h1>
     <div class="sub">Open 24 hours · Max 10 players</div>
     <div class="sub" style="margin-top:2px;">₱300/hr (8AM-3PM starts) | ₱400/hr (3PM-8AM starts)</div>
@@ -253,7 +266,7 @@
       <button id="refreshBtn" class="btn-ghost">Refresh</button>
       <span class="updated" id="updated"></span>
     </div>
-    <div class="legend" role="note">
+    <div class="legend" id="legend" role="note">
       <span><span class="dot open"></span> Open — tap to select</span>
       <span><span class="dot sel"></span> Selected</span>
       <span><span class="dot pend"></span> Pending confirmation</span>
@@ -271,6 +284,13 @@
   <div id="loading" class="notice">Loading live availability…</div>
   <div id="errorNotice" class="notice hidden"></div>
 
+  <div id="closedNotice" class="notice closed hidden" role="status">
+    <span class="closed-title">Reservations temporarily closed</span>
+    <span class="closed-msg" id="closedMsg"></span>
+    <span class="closed-sub">Please check back later, or message
+      <strong>THE BARRACKS COURT</strong> on Messenger for updates.</span>
+  </div>
+
   <div id="gridView" class="hidden">
     <div class="panel-hint" style="padding: 0 2px 8px;">
       Tap open slots to select them (you can pick several, across different days), then press “Book my slot”.
@@ -286,7 +306,7 @@
     </div>
   </div>
 
-  <footer>
+  <footer id="gridFooter">
     Times shown in Philippine time (Asia/Manila). This page updates automatically every minute.<br>
     A slot shows as <strong>Booked</strong> once a reservation with proof of payment is received.
   </footer>
@@ -357,7 +377,7 @@ var TIMEZONE = "Asia/Manila";
 /* ============================================================ */
 // selected: map "date||slot" -> hour index, for multi-slot booking
 // startIdx: first visible day in the 7-day window
-var state = { data: null, selected: {}, startIdx: 0 };
+var state = { data: null, selected: {}, startIdx: 0, closed: false };
 
 var $ = function (id) { return document.getElementById(id); };
 
@@ -505,6 +525,38 @@ function renderAll() {
   $("gridView").classList.remove("hidden");
 }
 
+/* ---------- maintenance mode ---------- */
+var DEFAULT_CLOSED_MSG =
+  "Reservations for The Barracks Court are temporarily unavailable until further notice.";
+
+/**
+ * msg = the notice text -> hide the calendar and show it.
+ * msg = null           -> reservations are back on, restore the calendar.
+ * Auto-refresh keeps running either way, so a page left open recovers by
+ * itself within a minute of the switch being flipped back.
+ */
+function showClosed(msg) {
+  var closed = msg !== null && msg !== undefined;
+  state.closed = closed;
+  if (closed) {
+    state.data = null;
+    state.selected = {};
+    closeModal();
+    $("closedMsg").textContent = msg || DEFAULT_CLOSED_MSG;
+    $("loading").classList.add("hidden");
+    $("updated").textContent = "";
+    $("gridView").classList.add("hidden");
+    $("errorNotice").classList.add("hidden");
+    $("bottomBar").classList.remove("show");
+    document.body.classList.remove("has-selection");
+  }
+  $("closedNotice").classList.toggle("hidden", !closed);
+  $("eyebrow").classList.toggle("hidden", closed); // "Live Availability" reads wrong when closed
+  $("legend").classList.toggle("hidden", closed);
+  $("refreshBtn").classList.toggle("hidden", closed);
+  $("gridFooter").classList.toggle("hidden", closed);
+}
+
 /* ---------- data ---------- */
 function load() {
   if (!BOOKING_APP_URL || BOOKING_APP_URL.indexOf("PASTE_") === 0) {
@@ -519,6 +571,13 @@ function load() {
       return r.json();
     })
     .then(function (data) {
+      // Maintenance switch (Sheet menu: Barracks Court -> Turn reservations OFF).
+      // Show the notice instead of the calendar and take nothing further.
+      if (data && data.open === false) {
+        showClosed(data.closedMessage);
+        return;
+      }
+      showClosed(null);
       state.data = data;
       state.startIdx = Math.max(0, Math.min(state.startIdx, data.dates.length - VISIBLE_DAYS));
       pruneSelection();
@@ -563,6 +622,7 @@ $("bbClear").onclick = function () {
 
 /* ---------- booking popup ---------- */
 function openModal() {
+  if (state.closed) return;
   var list = selectionList();
   if (!list.length) return;
   $("bmSlots").innerHTML = list.map(function (s) {
