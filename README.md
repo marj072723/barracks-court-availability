@@ -25,6 +25,24 @@ availability API exposes **only** dates, time slots, and open/booked status —
 never customer names, emails, or phone numbers. The classic Apps Script form
 still works at the same URL as a fallback.
 
+## Turning reservations off temporarily
+
+No code change and no redeploy needed — it's a switch in the Google Sheet:
+
+1. Open the booking spreadsheet → menu **Barracks Court → Turn reservations OFF…**
+2. Type a custom notice, or leave it blank for the default
+   ("Reservations for The Barracks Court are temporarily unavailable until
+   further notice.") → **OK**.
+3. Within a minute the dashboard hides the calendar and shows the notice
+   instead. Pages already open on someone's phone switch over by themselves.
+
+To reopen: **Barracks Court → Turn reservations back ON**. Not sure which state
+it's in? **Barracks Court → Reservations: are they on or off?**
+
+While it's off, the Apps Script also *rejects* booking submissions, so a stale
+page that someone left open before the switch was flipped can't sneak one
+through. Existing bookings on the sheet are untouched either way.
+
 ## Setup (~10 minutes)
 
 ### 1. Redeploy the booking form (one time)
