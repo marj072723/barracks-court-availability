@@ -29,6 +29,8 @@
     --openplay-bg:    rgba(42, 120, 214, 0.14);
     --past-ink:       #898781;
     --past-bg:        transparent;
+    --closed-ink:     #a02c2c;
+    --closed-bg:      rgba(160, 44, 44, 0.10);
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -52,6 +54,8 @@
       --openplay-bg:    rgba(57, 135, 229, 0.16);
       --past-ink:       #898781;
       --past-bg:        transparent;
+      --closed-ink:     #e08585;
+      --closed-bg:      rgba(224, 133, 133, 0.13);
     }
   }
 
@@ -100,6 +104,7 @@
   .dot.sel    { background: var(--brand); }
   .dot.pend   { background: var(--pend-bg); border-color: var(--pend-ink); }
   .dot.openplay { background: var(--openplay-bg); border-color: var(--openplay-ink); }
+  .dot.closed { background: var(--closed-bg); border-color: var(--closed-ink); }
   .dot.booked { background: var(--booked-bg); }
   .dot.past   { background: repeating-linear-gradient(45deg, var(--hairline) 0 2px, transparent 2px 5px); }
 
@@ -205,6 +210,16 @@
   td.c-pending { background: var(--pend-bg); color: var(--pend-ink); font-weight: 600; }
   td.c-openplay { background: var(--openplay-bg); color: var(--openplay-ink); font-weight: 600; }
   td.c-past   { color: var(--past-ink); }
+  td.c-closed { background: var(--closed-bg); color: var(--closed-ink); font-weight: 600; }
+  th.th-closed { color: var(--closed-ink); }
+  .th-closed-tag {
+    display: block; margin-top: 3px; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--closed-ink);
+  }
+  .closure-notes {
+    margin-top: 10px; font-size: 12.5px; line-height: 1.6; color: var(--closed-ink);
+  }
+  .closure-notes strong { font-weight: 700; }
 
   /* ---------- states ---------- */
   .notice {
@@ -272,6 +287,7 @@
       <span><span class="dot pend"></span> Pending confirmation</span>
       <span><span class="dot openplay"></span> Open Play</span>
       <span><span class="dot booked"></span> Booked</span>
+      <span><span class="dot closed"></span> Court closed</span>
     </div>
   </header>
 
@@ -303,6 +319,7 @@
     <div class="panel grid-scroll">
       <table class="grid" id="gridTable" aria-label="Availability, time slots by day"></table>
     </div>
+    <div class="closure-notes hidden" id="closureNotes"></div>
   </div>
 
   <footer id="gridFooter">
@@ -390,9 +407,18 @@ function manilaNow() {
   return { date: p.year + "-" + p.month + "-" + p.day, hour: Number(p.hour) % 24 };
 }
 
+/** Whole-day closure (Closed Dates tab) -> the note, or null if the day is open. */
+function closureFor(dateStr) {
+  var cd = state.data && state.data.closedDates;
+  return cd && dateStr in cd ? (cd[dateStr] || "") : null;
+}
+
 function slotStatus(dateStr, hourIdx) {
   var d = state.data;
   var slot = d.slots[hourIdx];
+  // A closed day outranks everything — including existing bookings on it,
+  // which stay on the sheet but are not something a customer can act on here.
+  if (closureFor(dateStr) !== null) return "closed";
   var v = d.booked[dateStr] && d.booked[dateStr][slot];
   if (v === "pending") return "pending";
   if (v === "open play") return "openplay";
@@ -475,8 +501,11 @@ function renderGrid() {
   var today = manilaNow().date;
   var html = "<thead><tr><th class='slot-col'>Time slot</th>";
   days.forEach(function (ds) {
-    html += "<th>" + (ds === today ? "Today" : fmtDay(ds, { weekday: "short" })) +
-      "<br>" + fmtDay(ds, { month: "short", day: "numeric" }) + "</th>";
+    var note = closureFor(ds);
+    html += "<th" + (note !== null ? " class='th-closed'" : "") + ">" +
+      (ds === today ? "Today" : fmtDay(ds, { weekday: "short" })) +
+      "<br>" + fmtDay(ds, { month: "short", day: "numeric" }) +
+      (note !== null ? "<span class='th-closed-tag'>Closed</span>" : "") + "</th>";
   });
   html += "</tr></thead><tbody>";
   d.slots.forEach(function (slot, h) {
@@ -491,7 +520,7 @@ function renderGrid() {
           "' aria-label='Select " + slot + " on " + ds + "'>" + (isSel ? "✓ Selected" : "Open") + "</td>";
       } else {
         var label = status === "booked" ? "Booked" : status === "pending" ? "Pending" :
-          status === "openplay" ? "Open Play" : "";
+          status === "openplay" ? "Open Play" : status === "closed" ? "Closed" : "";
         html += "<td class='c-" + status + "'>" + label + "</td>";
       }
     });
@@ -499,6 +528,27 @@ function renderGrid() {
   });
   html += "</tbody>";
   $("gridTable").innerHTML = html;
+  renderClosureNotes(days);
+}
+
+/* One line per closed day currently in view, with its note if there is one. */
+function renderClosureNotes(days) {
+  var lines = days.filter(function (ds) { return closureFor(ds) !== null; })
+    .map(function (ds) {
+      var note = closureFor(ds);
+      return "<strong>" + fmtDay(ds, { weekday: "long", month: "long", day: "numeric" }) +
+        " — court closed.</strong>" + (note ? " " + escapeHtml(note) : "");
+    });
+  var el = $("closureNotes");
+  el.innerHTML = lines.join("<br>");
+  el.classList.toggle("hidden", !lines.length);
+}
+
+/* Admin-typed text goes into innerHTML, so it has to be escaped. */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
 }
 
 function renderNav() {

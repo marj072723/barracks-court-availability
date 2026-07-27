@@ -25,6 +25,30 @@ availability API exposes **only** dates, time slots, and open/booked status —
 never customer names, emails, or phone numbers. The classic Apps Script form
 still works at the same URL as a fallback.
 
+## Closing individual dates
+
+For a holiday, maintenance day or private event — the rest of the calendar
+stays open and bookable.
+
+1. Spreadsheet → **Barracks Court → Close a specific date…**
+2. Type the date as `yyyy-mm-dd` (e.g. `2026-07-27`).
+3. Optionally add a note shown to customers ("Closed for court resurfacing").
+
+That day's 24 slots all show as **Closed** in red, the column header is tagged,
+and the note appears under the grid. Bookings for that day are rejected server
+side too, so a stale tab can't slip one through.
+
+To undo: **Barracks Court → Reopen a specific date…**
+
+Closed days are listed on the **Closed Dates** tab, one per row — you can also
+add/remove rows there by hand instead of using the menu. The tab is created
+automatically the first time you close a date.
+
+> **Closing a date does not cancel existing bookings.** Rows already on the
+> Bookings sheet stay there and still count toward the Summary. The menu warns
+> you how many there are; contact those customers yourself, then set their rows
+> to `Cancelled`.
+
 ## Turning reservations off temporarily
 
 No code change and no redeploy needed — it's a switch in the Google Sheet:
