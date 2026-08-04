@@ -25,6 +25,32 @@ availability API exposes **only** dates, time slots, and open/booked status —
 never customer names, emails, or phone numbers. The classic Apps Script form
 still works at the same URL as a fallback.
 
+## Changing the sender address (what customers see receipts FROM)
+
+Google only lets the script send as **the Google account that owns it**, or as
+an address that account has **verified in Gmail**. There is no setting that
+makes it send from an arbitrary address.
+
+Receipts already show the sender name as **THE BARRACKS COURT** rather than a
+bare gmail address, which is usually enough.
+
+To actually send from a different address:
+
+1. In Gmail (as the owner account) → Settings → See all settings → **Accounts
+   and Import** → "Send mail as" → **Add another email address**.
+2. Enter the address and click the verification link Google emails to it.
+3. Spreadsheet → **Barracks Court → Change the sender email…** → pick it from
+   the list. (The list only ever shows verified addresses, so a typo can't
+   silently break sending.) Choose `0` to go back to the owner address.
+4. **Barracks Court → Send a test email** to confirm.
+
+Replies to a customer receipt go to the admin email; replies to an admin
+notification go to the customer.
+
+> The alternative is to transfer ownership of the spreadsheet and Apps Script
+> project to a different Google account — bigger change, and it moves the
+> payment-proofs Drive folder too.
+
 ## Changing the admin email
 
 Where **new-booking notifications** go (not customer receipts — those always go
