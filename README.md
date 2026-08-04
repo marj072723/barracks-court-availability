@@ -25,6 +25,75 @@ availability API exposes **only** dates, time slots, and open/booked status —
 never customer names, emails, or phone numbers. The classic Apps Script form
 still works at the same URL as a fallback.
 
+## Moving everything to a different Google account
+
+Use this when receipts must genuinely come from another account, not just show a
+different display name. Plan ~30 minutes, and expect the booking site to be down
+for part of it — do it at a quiet hour, not a weekend evening.
+
+**Do the steps in order.** Ownership transfer alone changes nothing: the live web
+app keeps running as the *old* account until the new owner redeploys in step 4.
+
+### 1. Transfer the spreadsheet
+
+Both accounts must be signed in somewhere you can switch between.
+
+1. Open the booking spreadsheet as the current owner → **Share**.
+2. Add the new account as an **Editor**, send.
+3. Reopen **Share**, click the dropdown next to the new account →
+   **Transfer ownership**.
+4. Google emails an invitation — accept it **from the new account**. Ownership
+   only moves once accepted.
+
+The Apps Script project is bound to the spreadsheet, so it moves with it. Script
+Properties move too, so the maintenance switch, closed dates, admin email and
+sender alias all survive.
+
+### 2. Transfer the payment-proofs folder
+
+Same flow on the Drive folder **"THE BARRACKS COURT — Payment Proofs"**:
+Share → add new account as Editor → Transfer ownership → accept.
+
+> **Do not skip this.** `getProofFolder_()` silently creates a *new* folder if it
+> can't read the stored `PROOF_FOLDER_ID`, so a missed transfer splits your
+> screenshots across two folders without any error.
+>
+> Note that transferring a folder does **not** transfer the files inside it —
+> existing screenshots stay owned by the old account. The "Proof of Payment"
+> links in old rows keep working as long as that account still exists, so
+> **don't delete the old account.**
+
+### 3. New owner: authorize and reinstall triggers
+
+Signed in as the **new** owner:
+
+1. Open the spreadsheet → **Extensions → Apps Script**.
+2. Run `setup()` once. Approve the permissions prompt (it will ask for Gmail
+   access — that is expected).
+3. This installs the monthly-sheet trigger under the new account. Triggers belong
+   to whoever created them, so the old owner's copy keeps firing until deleted —
+   harmless (sheet creation is idempotent), but tidy it up from the old account's
+   Apps Script **Triggers** page when convenient.
+
+### 4. New owner: redeploy the web app
+
+**This is the step that actually changes the sending address.**
+
+**Deploy → New deployment → Web app → Execute as: Me, Access: Anyone.**
+
+A new deployment under a new account always mints a new `/exec` URL, so send it
+over — `BOOKING_APP_URL` in `index.html` has to be updated and pushed, and the
+booking site stays broken until that lands.
+
+### 5. Verify
+
+- `NEW_EXEC_URL?api=availability&days=3` returns JSON.
+- The live site loads the calendar again.
+- **Barracks Court → Send a test email** — confirm it now arrives from the new
+  account.
+- Place one real booking end to end and check the screenshot lands in the
+  transferred folder, not a new one.
+
 ## Changing the sender address (what customers see receipts FROM)
 
 Google only lets the script send as **the Google account that owns it**, or as
