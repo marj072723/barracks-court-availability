@@ -25,6 +25,20 @@ availability API exposes **only** dates, time slots, and open/booked status —
 never customer names, emails, or phone numbers. The classic Apps Script form
 still works at the same URL as a fallback.
 
+## Changing the admin email
+
+Where **new-booking notifications** go (not customer receipts — those always go
+to the address the customer typed into the booking form).
+
+1. Spreadsheet → **Barracks Court → Change the admin email…**
+2. Type the new address. It takes effect immediately — no redeploy.
+3. **Barracks Court → Send a test email** to confirm it actually arrives.
+
+The address is stored in Script Properties, so it overrides the `ADMIN_EMAIL`
+constant in `Code.gs`. That constant is now only the fallback for when no
+property has ever been set — editing it has no effect once you've used the menu
+once.
+
 ## Closing individual dates
 
 For a holiday, maintenance day or private event — the rest of the calendar
