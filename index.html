@@ -606,6 +606,52 @@ function showClosed(msg) {
   $("gridFooter").classList.toggle("hidden", closed);
 }
 
+/* ---------- instant first paint ----------
+   Apps Script takes ~5-30s to answer (most of it Google's own redirect +
+   container spin-up, before any of our code runs), so a cold visitor would
+   otherwise stare at "Loading…" the whole time. We keep the last good payload
+   in localStorage and render it immediately, then quietly swap in the fresh
+   one when it lands. Booking is still re-verified server side, so acting on
+   slightly stale data can only ever produce a clear "just taken" error —
+   never a double booking. */
+var CACHE_KEY = "bc_availability_v1";
+
+function saveCache(data) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data: data })); }
+  catch (e) { /* private mode / quota — caching is optional */ }
+}
+
+/* Only reuse a payload whose window still starts today, otherwise the grid
+   would render yesterday's columns. */
+function loadCache() {
+  try {
+    var raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    var c = JSON.parse(raw);
+    if (!c || !c.data) return null;
+    if (c.data.open === false) return c.data; // closed notice is date-independent
+    if (!c.data.dates || c.data.dates[0] !== manilaNow().date) return null;
+    return c.data;
+  } catch (e) { return null; }
+}
+
+function showCachedFirst() {
+  var cached = loadCache();
+  if (!cached) return false;
+  if (cached.open === false) {
+    showClosed(cached.closedMessage);
+    return true;
+  }
+  showClosed(null);
+  state.data = cached;
+  state.startIdx = Math.max(0, Math.min(state.startIdx, cached.dates.length - VISIBLE_DAYS));
+  pruneSelection();
+  $("loading").classList.add("hidden");
+  renderAll();
+  $("updated").textContent = "Checking for updates…";
+  return true;
+}
+
 /* ---------- data ---------- */
 function load() {
   if (!BOOKING_APP_URL || BOOKING_APP_URL.indexOf("PASTE_") === 0) {
@@ -623,10 +669,12 @@ function load() {
       // Maintenance switch (Sheet menu: Barracks Court -> Turn reservations OFF).
       // Show the notice instead of the calendar and take nothing further.
       if (data && data.open === false) {
+        saveCache(data);
         showClosed(data.closedMessage);
         return;
       }
       showClosed(null);
+      saveCache(data);
       state.data = data;
       state.startIdx = Math.max(0, Math.min(state.startIdx, data.dates.length - VISIBLE_DAYS));
       pruneSelection();
@@ -643,6 +691,10 @@ function load() {
         e.classList.remove("hidden");
         e.innerHTML = "<strong>Couldn't load availability.</strong><br>" +
           "Please refresh in a moment. (" + err.message + ")";
+      } else if ($("updated").textContent === "Checking for updates…") {
+        // Painted from cache and the refresh failed — say so rather than
+        // leaving "Checking for updates…" up forever.
+        $("updated").textContent = "Showing last known times — tap Refresh";
       }
     });
 }
@@ -770,6 +822,7 @@ $("gridTable").addEventListener("keydown", function (ev) {
   if (td) { ev.preventDefault(); toggleSelect(td.dataset.date, Number(td.dataset.h)); }
 });
 setInterval(load, REFRESH_SECONDS * 1000);
+showCachedFirst(); // paint last-known state instantly; load() refreshes it
 load();
 </script>
 </body>
