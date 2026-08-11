@@ -274,8 +274,8 @@
   <header>
     <div class="eyebrow" id="eyebrow">Live Availability</div>
     <h1 id="venueName">The Barracks Court</h1>
-    <div class="sub">Open 24 hours · Max 10 players</div>
-    <div class="sub" style="margin-top:2px;">₱300/hr (8AM-3PM) | ₱400/hr (3PM-8AM)</div>
+    <div class="sub">Open 8AM-12MN · Max 10 players</div>
+    <div class="sub" style="margin-top:2px;">₱300/hr (8AM-3PM) | ₱400/hr (3PM-12MN)</div>
     <div class="sub" style="font-size:12px;margin-top:2px;">Excess players beyond 10: ₱100/head, settled at the venue</div>
     <div class="toolbar">
       <button id="refreshBtn" class="btn-ghost">Refresh</button>
@@ -383,7 +383,7 @@
    ============================================================ */
 // Your Google Apps Script web-app URL (Deploy > Web app > the /exec link).
 // The same link customers use for the booking form.
-var BOOKING_APP_URL = "https://script.google.com/macros/s/AKfycbw_Vqrpq4p63HFvjTXByzFZUDg5omy6vZeZ0s6x4PJmKsotxuFcO58ySi6Z1Ji8B9omMQ/exec";
+var BOOKING_APP_URL = "https://script.google.com/macros/s/AKfycbxQPNPbhO5StJcpBL_EUD22acFzrigo2Tvtl_WDNxpTwv5RgWcoNpnjo0IaHF_97VjCPA/exec";
 var VISIBLE_DAYS = 4;       // columns shown at once
 var STEP_DAYS = 3;          // how many days Prev/Next moves the window
 var FETCH_DAYS = 30;        // how far ahead is loaded/navigable (max 30)
@@ -413,6 +413,17 @@ function closureFor(dateStr) {
   return cd && dateStr in cd ? (cd[dateStr] || "") : null;
 }
 
+/* "8:00 AM - 9:00 AM" -> 8. The slots list no longer starts at midnight (the
+   court opens at 8 AM), so a slot's position in state.data.slots is NOT its
+   hour of day — always derive the real clock hour from the text, the way the
+   backend's priceFor_ does. Getting this wrong silently mis-prices the grid. */
+function startHour(slot) {
+  var start = String(slot).split(" - ")[0];   // "8:00 AM"
+  var parts = start.split(" ");
+  var h = Number(parts[0].split(":")[0]) % 12;
+  return parts[1] === "PM" ? h + 12 : h;
+}
+
 function slotStatus(dateStr, hourIdx) {
   var d = state.data;
   var slot = d.slots[hourIdx];
@@ -424,7 +435,7 @@ function slotStatus(dateStr, hourIdx) {
   if (v === "open play") return "openplay";
   if (v) return "booked";
   var now = manilaNow();
-  if (dateStr < now.date || (dateStr === now.date && hourIdx < now.hour)) return "past";
+  if (dateStr < now.date || (dateStr === now.date && startHour(slot) < now.hour)) return "past";
   return "open";
 }
 
@@ -470,7 +481,7 @@ function pruneSelection() {
 function selectionList() {
   return Object.keys(state.selected).sort().map(function (key) {
     var p = key.split("||");
-    var hour = state.selected[key];
+    var hour = startHour(p[1]);
     return { date: p[0], slot: p[1], hour: hour, price: state.data.priceByHour[hour] };
   });
 }
@@ -510,7 +521,7 @@ function renderGrid() {
   html += "</tr></thead><tbody>";
   d.slots.forEach(function (slot, h) {
     html += "<tr><td class='slot-col'><span class='tcell'>" + compactSlot(slot) +
-      "</span><span class='pcell'>" + d.currency + d.priceByHour[h] + "</span></td>";
+      "</span><span class='pcell'>" + d.currency + d.priceByHour[startHour(slot)] + "</span></td>";
     days.forEach(function (ds) {
       var status = slotStatus(ds, h);
       if (status === "open") {
@@ -614,7 +625,10 @@ function showClosed(msg) {
    one when it lands. Booking is still re-verified server side, so acting on
    slightly stale data can only ever produce a clear "just taken" error —
    never a double booking. */
-var CACHE_KEY = "bc_availability_v1";
+// Bumped to v2 on 2026-08-10 with the 8AM-12MN hours change: a returning
+// visitor's cached v1 payload still holds the old 24-slot list, and painting it
+// would flash 12AM-8AM rows before the fresh data lands. A new key just misses.
+var CACHE_KEY = "bc_availability_v2";
 
 function saveCache(data) {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data: data })); }
