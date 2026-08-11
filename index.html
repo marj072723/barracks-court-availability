@@ -393,7 +393,8 @@ var TIMEZONE = "Asia/Manila";
 /* ============================================================ */
 // selected: map "date||slot" -> hour index, for multi-slot booking
 // startIdx: first visible day in the 7-day window
-var state = { data: null, selected: {}, startIdx: 0, closed: false };
+var state = { data: null, selected: {}, startIdx: 0, closed: false,
+              loading: false, lastLoadAt: 0 };
 
 var $ = function (id) { return document.getElementById(id); };
 
@@ -629,6 +630,7 @@ function showClosed(msg) {
 // visitor's cached v1 payload still holds the old 24-slot list, and painting it
 // would flash 12AM-8AM rows before the fresh data lands. A new key just misses.
 var CACHE_KEY = "bc_availability_v2";
+var cacheSavedAt = 0; // when the payload we painted from was captured
 
 function saveCache(data) {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data: data })); }
@@ -643,6 +645,7 @@ function loadCache() {
     if (!raw) return null;
     var c = JSON.parse(raw);
     if (!c || !c.data) return null;
+    cacheSavedAt = c.savedAt || 0;
     if (c.data.open === false) return c.data; // closed notice is date-independent
     if (!c.data.dates || c.data.dates[0] !== manilaNow().date) return null;
     return c.data;
@@ -662,7 +665,17 @@ function showCachedFirst() {
   pruneSelection();
   $("loading").classList.add("hidden");
   renderAll();
-  $("updated").textContent = "Checking for updates…";
+  /* Say how old this is. "Checking for updates…" on its own reads as live data,
+     which matters here: Apps Script can take 5-30s to answer, so that reassuring
+     line could sit over a half-day-old booking map the whole time. */
+  var mins = cacheSavedAt ? Math.floor((Date.now() - cacheSavedAt) / 60000) : 0;
+  $("updated").textContent = mins < 2
+    ? "Checking for updates…"
+    : "Showing times from " + (mins < 60
+        ? mins + " min ago"
+        : new Date(cacheSavedAt).toLocaleTimeString("en-PH",
+            { timeZone: TIMEZONE, hour: "numeric", minute: "2-digit" })) +
+      " — checking for updates…";
   return true;
 }
 
@@ -673,13 +686,29 @@ function load() {
     $("setupNotice").classList.remove("hidden");
     return;
   }
-  var url = BOOKING_APP_URL + "?api=availability&days=" + FETCH_DAYS;
-  fetch(url)
+  // Two loads can overlap easily now that visibilitychange also triggers one and
+  // Apps Script can take 5-30s to answer. Skip rather than queue: the in-flight
+  // request is already fetching data at least as fresh as a new one would.
+  // The time bound matters: a fetch that never settles would otherwise leave
+  // this flag stuck on and kill the Refresh button for the rest of the session.
+  // 45s is past the worst Apps Script latency we've measured (~30s).
+  if (state.loading && Date.now() - state.lastLoadAt < 45000) return;
+  state.loading = true;
+  state.lastLoadAt = Date.now();
+  /* Cache-bust deliberately. Without a unique param the browser (mobile Safari
+     in particular) is free to answer this GET from its own HTTP cache, so even
+     tapping Refresh could return a stale booking map. no-store covers the same
+     ground for browsers that honour it; the param covers the ones that don't.
+     Apps Script ignores unknown query params, so this is safe server side. */
+  var url = BOOKING_APP_URL + "?api=availability&days=" + FETCH_DAYS +
+    "&_=" + Date.now();
+  fetch(url, { cache: "no-store" })
     .then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     })
     .then(function (data) {
+      state.loading = false;
       // Maintenance switch (Sheet menu: Barracks Court -> Turn reservations OFF).
       // Show the notice instead of the calendar and take nothing further.
       if (data && data.open === false) {
@@ -699,6 +728,7 @@ function load() {
         new Date().toLocaleTimeString("en-PH", { timeZone: TIMEZONE, hour: "numeric", minute: "2-digit" });
     })
     .catch(function (err) {
+      state.loading = false;
       $("loading").classList.add("hidden");
       if (!state.data) { // keep showing stale data on refresh failures
         var e = $("errorNotice");
@@ -836,6 +866,23 @@ $("gridTable").addEventListener("keydown", function (ev) {
   if (td) { ev.preventDefault(); toggleSelect(td.dataset.date, Number(td.dataset.h)); }
 });
 setInterval(load, REFRESH_SECONDS * 1000);
+
+/* The interval alone is not enough on phones: backgrounded tabs get their timers
+   throttled or suspended outright, so someone who locks their phone and reopens
+   it an hour later would be looking at an hour-old grid until the next tick
+   happens to fire. Refresh whenever the page becomes visible again. pageshow
+   covers the bfcache case (Back button), where the page is restored wholesale
+   and no timer or visibility event fires at all. */
+function refreshIfStale() {
+  if (document.hidden) return;
+  if (Date.now() - state.lastLoadAt < 10000) return; // just loaded; don't hammer
+  load();
+}
+document.addEventListener("visibilitychange", refreshIfStale);
+window.addEventListener("pageshow", function (ev) {
+  if (ev.persisted) refreshIfStale();
+});
+
 showCachedFirst(); // paint last-known state instantly; load() refreshes it
 load();
 </script>
