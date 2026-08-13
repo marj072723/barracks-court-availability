@@ -31,6 +31,8 @@
     --past-bg:        transparent;
     --closed-ink:     #a02c2c;
     --closed-bg:      rgba(160, 44, 44, 0.10);
+    --custom-ink:     #6b3fa0;
+    --custom-bg:      rgba(122, 76, 187, 0.14);
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -56,6 +58,8 @@
       --past-bg:        transparent;
       --closed-ink:     #e08585;
       --closed-bg:      rgba(224, 133, 133, 0.13);
+      --custom-ink:     #b394e6;
+      --custom-bg:      rgba(146, 100, 214, 0.18);
     }
   }
 
@@ -106,6 +110,7 @@
   .dot.openplay { background: var(--openplay-bg); border-color: var(--openplay-ink); }
   .dot.closed { background: var(--closed-bg); border-color: var(--closed-ink); }
   .dot.booked { background: var(--booked-bg); }
+  .dot.custom { background: var(--custom-bg); border-color: var(--custom-ink); }
   .dot.past   { background: repeating-linear-gradient(45deg, var(--hairline) 0 2px, transparent 2px 5px); }
 
   .panel {
@@ -209,6 +214,9 @@
   td.c-booked { background: var(--booked-bg); color: var(--booked-ink); }
   td.c-pending { background: var(--pend-bg); color: var(--pend-ink); font-weight: 600; }
   td.c-openplay { background: var(--openplay-bg); color: var(--openplay-ink); font-weight: 600; }
+  /* Any admin-added status beyond the built-ins (CLUB, ...) — one shared style,
+     the cell text is what tells them apart. */
+  td.c-custom { background: var(--custom-bg); color: var(--custom-ink); font-weight: 600; }
   td.c-past   { color: var(--past-ink); }
   td.c-closed { background: var(--closed-bg); color: var(--closed-ink); font-weight: 600; }
   th.th-closed { color: var(--closed-ink); }
@@ -434,7 +442,11 @@ function slotStatus(dateStr, hourIdx) {
   var v = d.booked[dateStr] && d.booked[dateStr][slot];
   if (v === "pending") return "pending";
   if (v === "open play") return "openplay";
-  if (v) return "booked";
+  if (v === "booked") return "booked";
+  // Any other non-empty status is a custom admin option (e.g. "CLUB") the
+  // backend passed through as typed — return it verbatim, renderGrid shows it
+  // as its own label. Old cached payloads only ever contain the three above.
+  if (v) return v;
   var now = manilaNow();
   if (dateStr < now.date || (dateStr === now.date && startHour(slot) < now.hour)) return "past";
   return "open";
@@ -531,9 +543,13 @@ function renderGrid() {
           "' data-h='" + h + "' role='button' tabindex='0' aria-pressed='" + isSel +
           "' aria-label='Select " + slot + " on " + ds + "'>" + (isSel ? "✓ Selected" : "Open") + "</td>";
       } else {
-        var label = status === "booked" ? "Booked" : status === "pending" ? "Pending" :
-          status === "openplay" ? "Open Play" : status === "closed" ? "Closed" : "";
-        html += "<td class='c-" + status + "'>" + label + "</td>";
+        var knownLabels = { booked: "Booked", pending: "Pending", openplay: "Open Play",
+          closed: "Closed", past: "" };
+        var isCustom = !(status in knownLabels);
+        // Custom statuses are admin-typed sheet text — escape, and use one
+        // shared c-custom style rather than deriving a class from the text.
+        html += "<td class='c-" + (isCustom ? "custom" : status) + "'>" +
+          (isCustom ? escapeHtml(status) : knownLabels[status]) + "</td>";
       }
     });
     html += "</tr>";
@@ -577,11 +593,38 @@ function renderNav() {
     fmtDay(days[days.length - 1], { month: "short", day: "numeric" });
 }
 
+/* Adds a legend chip for each custom status present anywhere in the current
+   payload (e.g. "CLUB"), after the built-in ones. Rebuilt on every render so
+   chips appear/disappear as the sheet changes. */
+function renderCustomLegend() {
+  var legend = $("legend");
+  Array.prototype.slice.call(legend.querySelectorAll(".legend-custom"))
+    .forEach(function (el) { legend.removeChild(el); });
+  var booked = state.data.booked || {};
+  var seen = {}, names = [];
+  Object.keys(booked).forEach(function (ds) {
+    Object.keys(booked[ds]).forEach(function (slot) {
+      var v = booked[ds][slot];
+      if (v && v !== "pending" && v !== "open play" && v !== "booked" && !seen[v]) {
+        seen[v] = true;
+        names.push(v);
+      }
+    });
+  });
+  names.sort().forEach(function (name) {
+    var span = document.createElement("span");
+    span.className = "legend-custom";
+    span.innerHTML = "<span class='dot custom'></span> " + escapeHtml(name);
+    legend.appendChild(span);
+  });
+}
+
 function renderAll() {
   if (!state.data) return;
   $("venueName").textContent = state.data.venue;
   renderNav();
   renderGrid();
+  renderCustomLegend();
   renderBottomBar();
   $("gridView").classList.remove("hidden");
 }
