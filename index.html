@@ -217,7 +217,6 @@
   /* Any admin-added status beyond the built-ins (CLUB, ...) — one shared style,
      the cell text is what tells them apart. */
   td.c-custom { background: var(--custom-bg); color: var(--custom-ink); font-weight: 600; }
-  td.c-custom .cell-sub { display: block; font-size: 11px; font-weight: 500; opacity: 0.85; }
   td.c-past   { color: var(--past-ink); }
   td.c-closed { background: var(--closed-bg); color: var(--closed-ink); font-weight: 600; }
   th.th-closed { color: var(--closed-ink); }
@@ -453,19 +452,6 @@ function slotStatus(dateStr, hourIdx) {
   return "open";
 }
 
-/* Hourly rate for a custom status cell, from the backend's statusPricing map
-   (same 8AM–2PM / 3PM+ bands as the backend's priceForStatus_). Returns null
-   when the payload predates statusPricing, the status is unpriced, or it's
-   flat-priced per session (like Open Play) — a per-hour figure would misstate
-   a per-session price. */
-function customStatusRate(status, slot) {
-  var pricing = state.data.statusPricing;
-  var entry = pricing && pricing[String(status).toLowerCase()];
-  if (!entry || entry.flat || !(entry.am || entry.pm)) return null;
-  var h = startHour(slot);
-  return h >= 8 && h < 15 ? entry.am : entry.pm;
-}
-
 function fmtDay(dateStr, opts) {
   var p = dateStr.split("-");
   var dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
@@ -562,13 +548,10 @@ function renderGrid() {
         var isCustom = !(status in knownLabels);
         // Custom statuses are admin-typed sheet text — escape, and use one
         // shared c-custom style rather than deriving a class from the text.
-        // Their own rate (e.g. CLUB ₱350/hr) prints inside the cell, since the
-        // row's left-column price is the private-rental rate, not theirs.
-        var rate = isCustom ? customStatusRate(status, slot) : null;
+        // Label only, no rate: Marj decided (2026-08-17) status rates are
+        // internal and shouldn't print on the customer-facing calendar.
         html += "<td class='c-" + (isCustom ? "custom" : status) + "'>" +
-          (isCustom ? escapeHtml(status) +
-            (rate !== null ? "<span class='cell-sub'>" + d.currency + rate + "/hr</span>" : "")
-          : knownLabels[status]) + "</td>";
+          (isCustom ? escapeHtml(status) : knownLabels[status]) + "</td>";
       }
     });
     html += "</tr>";
