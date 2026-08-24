@@ -218,6 +218,7 @@
      the cell text is what tells them apart. */
   td.c-custom { background: var(--custom-bg); color: var(--custom-ink); font-weight: 600; }
   td.c-past   { color: var(--past-ink); }
+  td.c-unavail { color: var(--past-ink); } /* late slot on a non-Fri/Sat day */
   td.c-closed { background: var(--closed-bg); color: var(--closed-ink); font-weight: 600; }
   th.th-closed { color: var(--closed-ink); }
   .th-closed-tag {
@@ -282,7 +283,7 @@
   <header>
     <div class="eyebrow" id="eyebrow">Live Availability</div>
     <h1 id="venueName">The Barracks Court</h1>
-    <div class="sub">Open 8AM-12MN · Max 10 players</div>
+    <div class="sub">Open 8AM-10PM (til 12MN Fri &amp; Sat) · Max 10 players</div>
     <div class="sub" style="margin-top:2px;">₱300/hr (8AM-3PM) | ₱400/hr (3PM-12MN)</div>
     <div class="sub" style="font-size:12px;margin-top:2px;">Excess players beyond 10: ₱100/head, settled at the venue</div>
     <div class="toolbar">
@@ -447,6 +448,11 @@ function slotStatus(dateStr, hourIdx) {
   // backend passed through as typed — return it verbatim, renderGrid shows it
   // as its own label. Old cached payloads only ever contain the three above.
   if (v) return v;
+  // Late-night slots (10 PM onward) only run on Fridays and Saturdays. The
+  // backend says which close hour applies per date via closeHours; an older
+  // cached payload without the field just renders every slot, as before.
+  var ch = d.closeHours && d.closeHours[dateStr];
+  if (ch != null && startHour(slot) >= ch) return "unavail";
   var now = manilaNow();
   if (dateStr < now.date || (dateStr === now.date && startHour(slot) < now.hour)) return "past";
   return "open";
@@ -544,7 +550,7 @@ function renderGrid() {
           "' aria-label='Select " + slot + " on " + ds + "'>" + (isSel ? "✓ Selected" : "Open") + "</td>";
       } else {
         var knownLabels = { booked: "Booked", pending: "Pending", openplay: "Open Play",
-          closed: "Closed", past: "" };
+          closed: "Closed", past: "", unavail: "—" };
         var isCustom = !(status in knownLabels);
         // Custom statuses are admin-typed sheet text — escape, and use one
         // shared c-custom style rather than deriving a class from the text.
@@ -674,7 +680,9 @@ function showClosed(msg) {
 // Bumped to v2 on 2026-08-10 with the 8AM-12MN hours change: a returning
 // visitor's cached v1 payload still holds the old 24-slot list, and painting it
 // would flash 12AM-8AM rows before the fresh data lands. A new key just misses.
-var CACHE_KEY = "bc_availability_v2";
+// v3 on 2026-08-24 with Fri/Sat-only late nights: a v2 payload has no
+// closeHours, so weekday 10PM-12MN cells would flash "Open" until fresh data.
+var CACHE_KEY = "bc_availability_v3";
 var cacheSavedAt = 0; // when the payload we painted from was captured
 
 function saveCache(data) {
